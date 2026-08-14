@@ -126,8 +126,10 @@ WindowsではEdge、他ではChrome/Chromium)を開きます。ウィンドウ�
 python desktop/bootstrap.py     # uvを取得→環境構築→アプリ起動
 ```
 
-`desktop/tauri` には本格的なインストーラ(MSI/NSIS、AppImage/deb)をCIで
-ビルドするためのTauri v2シェルテンプレートがあります —
+インストーラ: `installer/appimage/build.sh` でLinux AppImageをローカル
+ビルドできます。CI(`installers.yml`)はこれに加えWindowsの
+`AIDirector-Setup.exe`(NSIS)とサードパーティライセンス集をビルドします。
+`desktop/tauri` にはTauri v2シェルのテンプレートもあります —
 [desktop/README.md](desktop/README.md) 参照。
 
 ## Docker

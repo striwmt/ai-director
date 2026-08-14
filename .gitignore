@@ -14,5 +14,11 @@ demo/
 data/
 footage/
 
+# Installer build outputs and download cache
+dist/
+installer/cache/
+desktop/bin/
+desktop/tauri/src-tauri/target/
+
 # User-supplied vendor LUTs (licensed, not distributed)
 assets/luts/*.cube

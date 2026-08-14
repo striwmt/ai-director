@@ -31,7 +31,34 @@ local-model extras (first run downloads several GB), and launches
 llama-server` with `extra.binary` pointing at the executable — AI Director
 then manages the server process itself.
 
-## 2. Tauri shell (`desktop/tauri`) — installer builds
+## 2. Installers (`installer/`)
+
+**Linux AppImage** — built and verified on this repo's dev machine:
+
+```bash
+python scripts/generate_third_party_licenses.py   # license bundle (run in the synced env)
+installer/appimage/build.sh                       # → dist/AIDirector-<ver>-x86_64.AppImage
+```
+
+The AppImage (~21 MB) carries the project, a static `uv`, and
+`THIRD_PARTY_LICENSES.md`. On first run it installs itself into
+`~/.local/share/aidirector`, builds the locked Python environment (several
+GB download on a fresh machine), and launches the app window. `ffmpeg`
+must be on PATH; the Director LLM can be self-managed via
+`provider: llama-server`.
+
+**Windows setup.exe** — `installer/windows/` holds the NSIS script and the
+payload stager; `.github/workflows/installers.yml` builds
+`AIDirector-Setup.exe` on a Windows runner (user-level install, Start-Menu
+shortcut, uninstaller; bundles `uv.exe`, no admin rights needed). Tag a
+release (`v*`) or run the workflow manually to get both installers plus
+the license bundle as artifacts.
+
+Licensing note: neither installer bundles ffmpeg, CUDA libraries, vendor
+LUTs, or Windows fonts — models and Python packages are fetched at first
+run from their original sources (see `THIRD_PARTY_LICENSES.md`).
+
+## 3. Tauri shell (`desktop/tauri`) — native webview builds
 
 A Tauri v2 project that bundles `bootstrap.py` + the Python project as
 resources, runs the environment setup on first start, launches the backend

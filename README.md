@@ -126,8 +126,10 @@ backend down. On a fresh machine, one command sets everything up:
 python desktop/bootstrap.py     # downloads uv, builds the env, launches the app
 ```
 
-`desktop/tauri` contains a Tauri v2 shell template for building real
-installers (MSI/NSIS, AppImage/deb) via CI — see
+Installers: `installer/appimage/build.sh` produces a Linux AppImage
+locally; CI (`installers.yml`) builds it together with a Windows
+`AIDirector-Setup.exe` (NSIS) and the third-party license bundle.
+`desktop/tauri` additionally holds a Tauri v2 shell template — see
 [desktop/README.md](desktop/README.md).
 
 ## Docker
