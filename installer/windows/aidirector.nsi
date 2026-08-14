@@ -30,18 +30,41 @@ Section "AI Director"
   File /r "stage\bin"
   File "aidirector.ico"
 
-  ; Launcher: uv sync is a fast no-op once the env exists; the first run
-  ; downloads the Python environment (several GB).
+  ; Console launcher: uv sync is a fast no-op once the env exists; the
+  ; first run downloads the Python environment (several GB). /quiet skips
+  ; the pause so the hidden launcher below never blocks on it.
   FileOpen $0 "$INSTDIR\AIDirector.cmd" w
   FileWrite $0 '@echo off$\r$\n'
   FileWrite $0 'cd /d "%~dp0app"$\r$\n'
-  FileWrite $0 '"%~dp0bin\uv.exe" sync --frozen --no-dev --extra speech --extra vision --extra embedding --extra web || (pause & exit /b 1)$\r$\n'
+  FileWrite $0 '"%~dp0bin\uv.exe" sync --frozen --no-dev --extra speech --extra vision --extra embedding --extra web || goto :fail$\r$\n'
   FileWrite $0 '"%~dp0bin\uv.exe" run --no-sync aidirector app$\r$\n'
-  FileWrite $0 'if errorlevel 1 (echo AI Director exited with an error - see the messages above. & pause)$\r$\n'
+  FileWrite $0 'if errorlevel 1 goto :fail$\r$\n'
+  FileWrite $0 'exit /b 0$\r$\n'
+  FileWrite $0 ':fail$\r$\n'
+  FileWrite $0 'echo AI Director exited with an error - see the messages above.$\r$\n'
+  FileWrite $0 'if not "%~1"=="/quiet" pause$\r$\n'
+  FileWrite $0 'exit /b 1$\r$\n'
+  FileClose $0
+
+  ; Windowless launcher: shows the console only on the first run (so the
+  ; multi-GB setup is visible), then runs hidden with an error dialog.
+  FileOpen $0 "$INSTDIR\AIDirector.vbs" w
+  FileWrite $0 'Set sh = CreateObject("WScript.Shell")$\r$\n'
+  FileWrite $0 'Set fso = CreateObject("Scripting.FileSystemObject")$\r$\n'
+  FileWrite $0 'base = fso.GetParentFolderName(WScript.ScriptFullName)$\r$\n'
+  FileWrite $0 'If fso.FolderExists(base & "\app\.venv") Then$\r$\n'
+  FileWrite $0 '  code = sh.Run("""" & base & "\AIDirector.cmd"" /quiet", 0, True)$\r$\n'
+  FileWrite $0 '  If code <> 0 Then$\r$\n'
+  FileWrite $0 '    MsgBox "AI Director exited with an error." & vbCrLf & "Run AIDirector.cmd in " & base & " to see details.", vbExclamation, "AI Director"$\r$\n'
+  FileWrite $0 '  End If$\r$\n'
+  FileWrite $0 'Else$\r$\n'
+  FileWrite $0 '  sh.Run """" & base & "\AIDirector.cmd""", 1, False$\r$\n'
+  FileWrite $0 'End If$\r$\n'
   FileClose $0
 
   CreateDirectory "$SMPROGRAMS\AI Director"
-  CreateShortcut "$SMPROGRAMS\AI Director\AI Director.lnk" "$INSTDIR\AIDirector.cmd" "" "$INSTDIR\aidirector.ico"
+  CreateShortcut "$SMPROGRAMS\AI Director\AI Director.lnk" \
+      "$WINDIR\System32\wscript.exe" '"$INSTDIR\AIDirector.vbs"' "$INSTDIR\aidirector.ico"
   CreateShortcut "$SMPROGRAMS\AI Director\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
 
   WriteUninstaller "$INSTDIR\Uninstall.exe"
