@@ -25,20 +25,47 @@ START_DELAY = 0.15
 _MIN_SHOW = 1.0
 
 
+# Well-known font locations for hosts without fontconfig (Windows, minimal
+# Linux). CJK-capable fonts first; order matters.
+FALLBACK_FONT_FILES: tuple[str, ...] = (
+    # Windows
+    r"C:\Windows\Fonts\meiryo.ttc",
+    r"C:\Windows\Fonts\YuGothM.ttc",
+    r"C:\Windows\Fonts\yugothm.ttc",
+    r"C:\Windows\Fonts\msgothic.ttc",
+    r"C:\Windows\Fonts\segoeui.ttf",
+    r"C:\Windows\Fonts\arial.ttf",
+    # Linux without fontconfig
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/NotoSansCJKjp-VF.otf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    # macOS
+    "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",
+    "/System/Library/Fonts/Helvetica.ttc",
+)
+
+
 @lru_cache(maxsize=4)
 def find_caption_font(needs_cjk: bool = True) -> str | None:
-    """Resolve a font file via fontconfig; None disables captions."""
-    if not tool_available("fc-match"):
-        log.warning("fc-match not available; captions disabled")
-        return None
-    pattern = "sans-serif:lang=ja" if needs_cjk else "sans-serif"
-    try:
-        result = run_command(["fc-match", "-f", "%{file}", pattern], timeout=10.0)
-    except Exception as exc:
-        log.warning("font lookup failed (%s); captions disabled", exc)
-        return None
-    font = result.stdout.strip()
-    return font or None
+    """Resolve a usable font file; None disables captions.
+
+    fontconfig (Linux) is authoritative when present; otherwise fall back
+    to well-known font paths so Windows/macOS work without extra tooling.
+    """
+    if tool_available("fc-match"):
+        pattern = "sans-serif:lang=ja" if needs_cjk else "sans-serif"
+        try:
+            result = run_command(["fc-match", "-f", "%{file}", pattern], timeout=10.0)
+            font = result.stdout.strip()
+            if font:
+                return font
+        except Exception as exc:
+            log.warning("fc-match lookup failed (%s); trying fallbacks", exc)
+    for candidate in FALLBACK_FONT_FILES:
+        if Path(candidate).is_file():
+            return candidate
+    log.warning("no caption font found; captions disabled")
+    return None
 
 
 @dataclass(frozen=True)

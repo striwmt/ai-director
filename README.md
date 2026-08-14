@@ -99,11 +99,22 @@ carried into NLE exports as FCPXML titles / OTIO markers / EDL comments.
 
 ```bash
 aidirector web            # → http://127.0.0.1:8484/
+aidirector app            # desktop mode: free port + opens your browser
 ```
 
-Reorder, trim (graphical filmstrip with draggable in/out handles), remove
-clips, edit captions, add segments from Media Memory, save as a new plan
-version (user actions are recorded as feedback), and re-render the preview.
+Create edits from the browser (footage path + prompt + settings, with live
+phase/log progress), then reorder, trim (graphical filmstrip with draggable
+in/out handles), remove clips, edit captions, add segments from Media
+Memory, save as a new plan version (user actions are recorded as feedback),
+and re-render the preview.
+
+### Managed Director LLM (no manual server)
+
+Set `provider: llama-server` in `config/models.yaml` and AI Director
+starts/stops `llama-server` itself around the director phase — it never
+holds VRAM during vision analysis, and an already-running server on the
+port is reused instead. Works on Windows and Linux (caption fonts and the
+CUDA runtime shims are resolved per-platform).
 
 ## Docker
 

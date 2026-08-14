@@ -253,6 +253,34 @@ def search(
         typer.echo(f"{hit.score:.3f}  {understanding.to_summary_line()}")
 
 
+def _serve(
+    config: AppConfig, host: str, port: int, *, open_browser: bool
+) -> None:
+    try:
+        import uvicorn
+    except ImportError as exc:
+        raise typer.Exit(
+            code=_fail("web extra not installed. Run: uv sync --extra web")
+        ) from exc
+    from .web.app import create_app
+
+    if port == 0:
+        import socket
+
+        with socket.socket() as probe:
+            probe.bind((host, 0))
+            port = probe.getsockname()[1]
+
+    url = f"http://{host}:{port}/"
+    typer.echo(f"AI Director UI: {url}")
+    if open_browser:
+        import threading
+        import webbrowser
+
+        threading.Timer(1.0, webbrowser.open, [url]).start()
+    uvicorn.run(create_app(config), host=host, port=port, log_level="warning")
+
+
 @app.command()
 def web(
     host: str = typer.Option("127.0.0.1", "--host"),
@@ -262,16 +290,19 @@ def web(
 ) -> None:
     """Start the review/edit web UI (reorder, trim, captions, re-render)."""
     config = _setup(config_file, log_level)
-    try:
-        import uvicorn
-    except ImportError as exc:
-        raise typer.Exit(
-            code=_fail("web extra not installed. Run: uv sync --extra web")
-        ) from exc
-    from .web.app import create_app
+    _serve(config, host, port, open_browser=False)
 
-    typer.echo(f"AI Director UI: http://{host}:{port}/")
-    uvicorn.run(create_app(config), host=host, port=port, log_level="warning")
+
+@app.command("app")
+def desktop_app(
+    port: int = typer.Option(0, "--port", help="0 = pick a free port"),
+    no_browser: bool = typer.Option(False, "--no-browser"),
+    config_file: Optional[Path] = typer.Option(None, "--config"),
+    log_level: Optional[str] = typer.Option(None, "--log-level"),
+) -> None:
+    """Desktop mode: start the UI on a free port and open the browser."""
+    config = _setup(config_file, log_level)
+    _serve(config, "127.0.0.1", port, open_browser=not no_browser)
 
 
 def _load_plan(memory: MediaMemory, plan_id: str):

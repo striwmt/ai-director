@@ -22,27 +22,36 @@ def _preload_cuda12_libs() -> None:
     """Make pip-shipped CUDA 12 libs (cuBLAS/cuDNN) visible to CTranslate2.
 
     CTranslate2 links against CUDA 12; when the venv's primary CUDA runtime
-    is newer (torch cu13+), dlopen by soname fails unless the cu12 libs are
-    already loaded. Failures here are fine — CPU fallback still works.
+    is newer (torch cu13+), loading by library name fails unless the cu12
+    libs are already loaded. Linux wheels ship ``lib/*.so*``, Windows wheels
+    ``bin/*.dll``. Failures here are fine — CPU fallback still works.
     """
     import ctypes
-
-    try:
-        import nvidia.cublas.lib as cublas_lib
-        import nvidia.cudnn.lib as cudnn_lib
-    except ImportError:
-        return
-
+    import importlib
     from pathlib import Path as _Path
 
+    lib_dirs: list[_Path] = []
+    for name in (
+        "nvidia.cublas.lib", "nvidia.cublas.bin",
+        "nvidia.cudnn.lib", "nvidia.cudnn.bin",
+    ):
+        try:
+            module = importlib.import_module(name)
+        except ImportError:
+            continue
+        lib_dirs.append(_Path(module.__path__[0]))
+
     libs: list[_Path] = []
-    for mod in (cublas_lib, cudnn_lib):
-        libs.extend(sorted(_Path(mod.__path__[0]).glob("*.so*")))
+    for directory in lib_dirs:
+        for pattern in ("*.so*", "*.dll"):
+            libs.extend(sorted(directory.glob(pattern)))
+
+    load_mode = getattr(ctypes, "RTLD_GLOBAL", ctypes.DEFAULT_MODE)
     # Two passes: inter-library dependencies resolve on the second attempt.
     for _ in range(2):
-        for so in libs:
+        for lib in libs:
             try:
-                ctypes.CDLL(str(so), mode=ctypes.RTLD_GLOBAL)
+                ctypes.CDLL(str(lib), mode=load_mode)
             except OSError:
                 continue
 

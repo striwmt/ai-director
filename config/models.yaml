@@ -9,8 +9,20 @@ models:
     model: Qwen/Qwen3-VL-4B-Instruct
     device: auto
 
-  # e.g.: llama-server -hf Qwen/Qwen3-8B-GGUF:Q4_K_M --port 8102 -ngl 99 \
+  # Two ways to run the Director LLM:
+  #
+  # (a) openai-compatible — you run the server yourself, e.g.:
+  #       llama-server -hf Qwen/Qwen3-8B-GGUF:Q4_K_M --port 8102 -ngl 99 \
   #         -c 16384 -fa on --jinja --reasoning-budget 0
+  #
+  # (b) llama-server — AI Director starts/stops the server itself around the
+  #     director phase (never holds VRAM during vision analysis). Reuses an
+  #     already-running server on the port if one exists:
+  #       director:
+  #         provider: llama-server
+  #         model: Qwen/Qwen3-8B-GGUF:Q4_K_M    # -hf ref, or a local .gguf path
+  #         context_length: 16384
+  #         extra: { binary: llama-server, port: 8102, startup_timeout: 900 }
   director:
     provider: openai-compatible
     base_url: http://127.0.0.1:8102/v1

@@ -145,6 +145,27 @@ def test_caption_overlay_skip_short_clip_and_empty(tmp_path):
     ) is None
 
 
+def test_font_fallback_without_fontconfig(tmp_path, monkeypatch):
+    import aidirector.timeline.captions as captions_mod
+
+    fake_font = tmp_path / "fake.ttc"
+    fake_font.write_bytes(b"\x00")
+    monkeypatch.setattr(captions_mod, "tool_available", lambda name: False)
+    monkeypatch.setattr(
+        captions_mod, "FALLBACK_FONT_FILES",
+        (r"C:\Windows\Fonts\meiryo.ttc", str(fake_font)),
+    )
+    captions_mod.find_caption_font.cache_clear()
+    try:
+        assert captions_mod.find_caption_font() == str(fake_font)
+
+        monkeypatch.setattr(captions_mod, "FALLBACK_FONT_FILES", ())
+        captions_mod.find_caption_font.cache_clear()
+        assert captions_mod.find_caption_font() is None
+    finally:
+        captions_mod.find_caption_font.cache_clear()
+
+
 def test_caption_validation(memory):
     from aidirector.director.schemas import EditClip, EditPlan
     from aidirector.errors import ValidationError

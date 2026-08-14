@@ -49,6 +49,10 @@ def _make_director_provider(cfg: ModelEndpointConfig) -> Any:
         from .providers.director import OpenAICompatibleDirectorProvider
 
         return OpenAICompatibleDirectorProvider(cfg)
+    if cfg.provider == "llama-server":
+        from .providers.director import LlamaServerDirectorProvider
+
+        return LlamaServerDirectorProvider(cfg)
     raise ProviderError(f"unknown director provider: {cfg.provider}")
 
 
