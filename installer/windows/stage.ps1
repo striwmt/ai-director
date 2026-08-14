@@ -7,6 +7,7 @@ $stage = "$PSScriptRoot\stage"
 Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force "$stage\app\desktop" | Out-Null
 New-Item -ItemType Directory -Force "$stage\bin" | Out-Null
+New-Item -ItemType Directory -Force "$root\dist" | Out-Null
 
 # App payload
 foreach ($item in @("pyproject.toml", "uv.lock", "src", "config", "assets",

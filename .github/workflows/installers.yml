@@ -49,7 +49,17 @@ jobs:
       - name: Stage payload
         run: powershell -File installer/windows/stage.ps1
       - name: Build installer
-        run: makensis installer/windows/aidirector.nsi
+        shell: pwsh
+        run: |
+          # NSIS is not on PATH on the runner image; resolve or install it.
+          $nsis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+          if (-not (Test-Path $nsis)) {
+            choco install nsis -y --no-progress
+            $nsis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+          }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          & $nsis installer/windows/aidirector.nsi
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
           name: AIDirector-windows-setup
