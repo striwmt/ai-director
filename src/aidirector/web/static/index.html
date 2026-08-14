@@ -110,6 +110,49 @@
             display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
   .mem .m { font-size:11px; color:var(--patina); }
   .empty { color:var(--muted); padding:30px 0; text-align:center; }
+
+  /* creation panel */
+  #createPanel {
+    margin:16px 18px 0; background:var(--surface); border:1px solid var(--line);
+    border-radius:8px; padding:16px 18px; display:none;
+  }
+  #createPanel.open { display:block; }
+  #createPanel h2 { margin-top:0; }
+  .form { display:grid; grid-template-columns:110px 1fr; gap:10px 12px; align-items:center; max-width:760px; }
+  .form label { color:var(--muted); font-size:13px; }
+  .form input[type=text], .form textarea, .form select { width:100%; }
+  .form textarea {
+    background:var(--surface2); color:var(--ink); border:1px solid var(--line);
+    border-radius:5px; padding:6px 8px; font:inherit; font-size:13px; min-height:56px; resize:vertical;
+  }
+  .form .inline { display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+  .form .inline input[type=number] { width:90px; }
+  .pathinfo { font-size:12.5px; margin-top:4px; }
+  .pathinfo.ok { color:var(--patina); }
+  .pathinfo.bad { color:var(--danger); }
+  .form-actions { grid-column:2; display:flex; gap:10px; align-items:center; }
+
+  /* progress view */
+  #progressView { display:none; }
+  #progressView.open { display:block; }
+  .phases { display:flex; gap:6px; flex-wrap:wrap; margin:10px 0; }
+  .phase {
+    font-size:11.5px; letter-spacing:.06em; padding:3px 10px; border-radius:12px;
+    border:1px solid var(--line); color:var(--muted);
+  }
+  .phase.active { border-color:var(--patina); color:var(--patina); font-weight:600; }
+  .phase.done2 { color:var(--ink); border-color:var(--muted); }
+  #joblog {
+    background:#0e1013; border:1px solid var(--line); border-radius:6px;
+    padding:10px 12px; height:180px; overflow-y:auto; font-size:12px;
+    font-family:ui-monospace,Menlo,Consolas,monospace; white-space:pre-wrap;
+    color:var(--muted); margin:0;
+  }
+  #jobError { color:var(--danger); white-space:pre-wrap; font-size:13px; }
+  .runbadge { color:var(--patina); font-size:12.5px; }
+  @keyframes pulse { 50% { opacity:.45; } }
+  .runbadge.on { animation:pulse 1.6s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce){ .runbadge.on { animation:none; } }
 </style>
 </head>
 <body>
@@ -119,10 +162,72 @@
   <select id="planSel" title="編集案"></select>
   <span class="total" id="total"></span>
   <span class="spacer"></span>
+  <span class="runbadge" id="runBadge"></span>
   <span id="status"></span>
+  <button id="createToggle">+ 新規作成</button>
   <button id="renderBtn">プレビュー生成</button>
   <button id="saveBtn" class="primary" disabled>保存(新バージョン)</button>
 </header>
+
+<section id="createPanel">
+  <div id="createForm">
+    <h2 class="serifless">新規作成 — 素材から編集案を生成</h2>
+    <div class="form">
+      <label for="cfPath">素材パス</label>
+      <div>
+        <input type="text" id="cfPath" list="pathHistory"
+               placeholder="/path/to/footage (Dockerでは /footage)">
+        <datalist id="pathHistory"></datalist>
+        <div class="pathinfo" id="pathInfo"></div>
+      </div>
+
+      <label for="cfPrompt">指示</label>
+      <textarea id="cfPrompt" placeholder="例: 雨の町を静かに歩く旅行Vlog。電車で到着し、川沿いを歩き、古い寺を訪ねる"></textarea>
+
+      <label>設定</label>
+      <div class="inline">
+        <span><label for="cfDuration">目標尺</label>
+          <input type="number" id="cfDuration" value="60" min="5" step="5"> 秒</span>
+        <span><label for="cfProfile">プロファイル</label>
+          <select id="cfProfile"></select></span>
+        <span><label for="cfCanvas">キャンバス</label>
+          <select id="cfCanvas">
+            <option value="auto">自動</option>
+            <option value="landscape">横 16:9</option>
+            <option value="portrait">縦 9:16</option>
+          </select></span>
+      </div>
+
+      <label>キャプション</label>
+      <div class="inline">
+        <select id="cfCaptions">
+          <option value="none">なし</option>
+          <option value="beats">場面転換ごと</option>
+          <option value="clips">全クリップ</option>
+        </select>
+        <input type="text" id="cfCapFmt" value="{PLACE}\n{DATE} {TIME}"
+               title="トークン: {PLACE} {DATE} {TIME} {YYYY} {MO} {DD} {HH} {MM}"
+               style="display:none; width:220px;">
+      </div>
+
+      <span></span>
+      <div class="form-actions">
+        <button id="createBtn" class="primary">作成開始</button>
+        <span class="fname">analyze はキャッシュされるため、同じ素材の2回目以降は director だけが走ります</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="progressView">
+    <h2>作成中…</h2>
+    <div class="phases" id="phaseChips"></div>
+    <pre id="joblog"></pre>
+    <div id="jobError"></div>
+    <div style="margin-top:10px;">
+      <button id="jobCloseBtn" style="display:none;">閉じる</button>
+    </div>
+  </div>
+</section>
 
 <main>
   <section>
@@ -170,8 +275,10 @@ async function init(){
     o.value = p.id; o.textContent = p.name;
     sel.appendChild(o);
   }
+  initCreate(state.projects);
   if(!state.projects.length){
-    $("timeline").innerHTML = '<div class="empty">プロジェクトがありません。まず aidirector edit を実行してください。</div>';
+    $("timeline").innerHTML = '<div class="empty">プロジェクトがありません。「+ 新規作成」から始めてください。</div>';
+    $("createPanel").classList.add("open");
     return;
   }
   projectId = state.projects[0].id;
@@ -512,6 +619,166 @@ function updatePreviewLink(fresh){
       $("renderState").textContent = "未レンダリング";
     }
   });
+}
+
+// --- creation flow ----------------------------------------------------
+
+const PHASES = [
+  ["ingest", "取り込み"], ["segments", "分割/CV"], ["speech", "音声認識"],
+  ["vision", "映像理解"], ["embedding", "検索索引"], ["director", "編集立案"],
+  ["render", "レンダリング"],
+];
+let createPolling = null;
+
+function initCreate(projects){
+  const history = $("pathHistory");
+  history.innerHTML = "";
+  for(const p of projects){
+    const o = document.createElement("option");
+    o.value = p.root_dir;
+    history.appendChild(o);
+  }
+  api("/api/profiles").then(({profiles, default: def}) => {
+    const sel = $("cfProfile");
+    sel.innerHTML = "";
+    for(const pr of profiles){
+      const o = document.createElement("option");
+      o.value = pr.name; o.textContent = pr.name; o.title = pr.description;
+      sel.appendChild(o);
+    }
+    if(def) sel.value = def;
+  });
+
+  $("createToggle").onclick = () => $("createPanel").classList.toggle("open");
+  $("cfCaptions").onchange = e =>
+    $("cfCapFmt").style.display = e.target.value === "none" ? "none" : "inline-block";
+
+  let debounce = null;
+  $("cfPath").oninput = () => {
+    clearTimeout(debounce);
+    debounce = setTimeout(validatePath, 350);
+  };
+  $("createBtn").onclick = startCreate;
+  $("jobCloseBtn").onclick = () => {
+    $("progressView").classList.remove("open");
+    $("createForm").style.display = "";
+    $("jobCloseBtn").style.display = "none";
+    $("jobError").textContent = "";
+  };
+
+  // A job may already be running (page reload)
+  api("/api/create/status").then(st => {
+    if(st.status === "running"){ showProgress(); pollCreate(); }
+  });
+}
+
+async function validatePath(){
+  const path = $("cfPath").value.trim();
+  const info = $("pathInfo");
+  if(!path){ info.textContent = ""; return; }
+  try{
+    const res = await api(`/api/footage/validate?path=${encodeURIComponent(path)}`);
+    if(!res.exists){
+      info.className = "pathinfo bad"; info.textContent = "ディレクトリが見つかりません";
+    } else if(res.video_count === 0){
+      info.className = "pathinfo bad"; info.textContent = "動画ファイルがありません";
+    } else {
+      info.className = "pathinfo ok";
+      info.textContent = `動画 ${res.video_count} 本を検出` +
+        (res.known_project ? "(解析済みプロジェクト — 2回目以降は高速)" : "") +
+        ": " + res.files.slice(0,4).join(", ") + (res.video_count > 4 ? " …" : "");
+    }
+  }catch(e){ info.className = "pathinfo bad"; info.textContent = e.message; }
+}
+
+async function startCreate(){
+  const body = {
+    footage_path: $("cfPath").value.trim(),
+    prompt: $("cfPrompt").value.trim(),
+    duration: parseFloat($("cfDuration").value) || 60,
+    profile: $("cfProfile").value || null,
+    captions: $("cfCaptions").value,
+    caption_format: $("cfCaptions").value === "none" ? null : $("cfCapFmt").value,
+    canvas: $("cfCanvas").value,
+  };
+  if(!body.footage_path){ alert("素材パスを入力してください"); return; }
+  try{
+    await api("/api/create", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(body),
+    });
+  }catch(e){ alert(e.message); return; }
+  showProgress();
+  pollCreate();
+}
+
+function showProgress(){
+  $("createPanel").classList.add("open");
+  $("createForm").style.display = "none";
+  $("progressView").classList.add("open");
+  $("createBtn").disabled = true;
+}
+
+function renderPhases(current){
+  const chips = $("phaseChips");
+  chips.innerHTML = "";
+  const idx = PHASES.findIndex(([k]) => k === current);
+  PHASES.forEach(([key, label], i) => {
+    const s = document.createElement("span");
+    s.className = "phase" + (key === current ? " active" : (idx >= 0 && i < idx ? " done2" : ""));
+    s.textContent = label;
+    chips.appendChild(s);
+  });
+}
+
+function pollCreate(){
+  clearTimeout(createPolling);
+  const tick = async () => {
+    const st = await api("/api/create/status");
+    renderPhases(st.phase);
+    const logEl = $("joblog");
+    logEl.textContent = (st.log || []).join("\n");
+    logEl.scrollTop = logEl.scrollHeight;
+    const badge = $("runBadge");
+    if(st.status === "running"){
+      badge.textContent = "作成中: " + (PHASES.find(([k])=>k===st.phase)?.[1] || st.phase || "…");
+      badge.classList.add("on");
+      createPolling = setTimeout(tick, 2000);
+      return;
+    }
+    badge.classList.remove("on");
+    $("createBtn").disabled = false;
+    $("jobCloseBtn").style.display = "inline-block";
+    if(st.status === "failed"){
+      badge.textContent = "";
+      $("jobError").textContent = "作成に失敗しました:\n" + (st.error || "不明なエラー");
+      return;
+    }
+    if(st.status === "done" && st.plan_id){
+      badge.textContent = "作成完了";
+      const state = await api("/api/state");
+      const sel = $("projectSel");
+      sel.innerHTML = "";
+      for(const p of state.projects){
+        const o = document.createElement("option");
+        o.value = p.id; o.textContent = p.name;
+        sel.appendChild(o);
+      }
+      initCreate(state.projects);
+      // The new plan's project is whichever contains it — reload via plans.
+      for(const p of state.projects){
+        const { plans } = await api(`/api/projects/${p.id}/plans`);
+        if(plans.some(x => x.id === st.plan_id)){
+          projectId = p.id; sel.value = p.id;
+          await loadProject();
+          await loadPlan(st.plan_id);
+          break;
+        }
+      }
+      $("jobCloseBtn").click();
+    }
+  };
+  tick();
 }
 
 init().catch(e => note("初期化エラー: " + e.message));

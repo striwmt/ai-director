@@ -1,16 +1,89 @@
-"""Background render jobs for the web UI.
+"""Background jobs for the web UI.
 
-One render per plan at a time; status is polled by the frontend.
+RenderJobs: one preview render per plan at a time.
+PipelineJob: single-slot create job (analyze -> director -> preview) with
+log capture — only one may run because the pipeline owns the GPU.
 """
 
 from __future__ import annotations
 
+import collections
+import logging
 import threading
 from typing import Callable
 
 from ..logging import get_logger
 
 log = get_logger("web.jobs")
+
+
+class _RingBufferHandler(logging.Handler):
+    """Capture aidirector log lines for the UI's progress view."""
+
+    def __init__(self, maxlen: int = 200) -> None:
+        super().__init__(level=logging.INFO)
+        self.lines: collections.deque[str] = collections.deque(maxlen=maxlen)
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            name = record.name.removeprefix("aidirector.")
+            self.lines.append(f"{name}: {record.getMessage()}")
+        except Exception:
+            pass
+
+
+class PipelineJob:
+    """One create job at a time; status/log polled by the frontend."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._state: dict = {"status": "idle", "phase": None, "log": [],
+                             "plan_id": None, "error": None, "params": None}
+        self._handler: _RingBufferHandler | None = None
+
+    def start(self, params: dict, work: Callable[[Callable[[str], None]], str]) -> bool:
+        """Start ``work(progress)`` in a thread; returns False if busy.
+
+        ``work`` receives a progress(phase) callback and returns the plan id.
+        """
+        with self._lock:
+            if self._state["status"] == "running":
+                return False
+            handler = _RingBufferHandler()
+            self._handler = handler
+            self._state = {"status": "running", "phase": "starting", "log": [],
+                           "plan_id": None, "error": None, "params": params}
+
+        def progress(phase: str) -> None:
+            with self._lock:
+                self._state["phase"] = phase
+
+        def _run() -> None:
+            root = logging.getLogger("aidirector")
+            root.addHandler(handler)
+            try:
+                plan_id = work(progress)
+                with self._lock:
+                    self._state["status"] = "done"
+                    self._state["plan_id"] = plan_id
+                    self._state["phase"] = "done"
+            except Exception as exc:
+                log.error("create job failed: %s", exc)
+                with self._lock:
+                    self._state["status"] = "failed"
+                    self._state["error"] = str(exc)
+            finally:
+                root.removeHandler(handler)
+
+        threading.Thread(target=_run, name="aidirector-create", daemon=True).start()
+        return True
+
+    def status(self) -> dict:
+        with self._lock:
+            state = dict(self._state)
+        if self._handler is not None:
+            state["log"] = list(self._handler.lines)
+        return state
 
 
 class RenderJobs:

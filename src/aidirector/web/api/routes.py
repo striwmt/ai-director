@@ -24,12 +24,13 @@ from ...perception.interpretation import build_understanding
 from ...timeline.compiler import compile_timeline
 from ...timeline.preview import render_preview
 from ...timeline.validate import validate_edit_plan
-from ..jobs import RenderJobs
+from ..jobs import PipelineJob, RenderJobs
 
 log = get_logger("web.api")
 
 router = APIRouter(prefix="/api")
 jobs = RenderJobs()
+create_job = PipelineJob()
 
 
 def get_config(request: Request) -> AppConfig:
@@ -242,6 +243,103 @@ def save_plan(
         plan_id, new_id, new_plan.version, len(new_plan.clips), len(body.feedback),
     )
     return {"plan_id": new_id, "version": new_plan.version}
+
+
+# ---------------------------------------------------------------------------
+# Creation (footage -> analyze -> director -> preview)
+
+
+@router.get("/footage/validate")
+def validate_footage(
+    path: str,
+    config: AppConfig = Depends(get_config),
+    memory: MediaMemory = Depends(get_memory),
+) -> dict:
+    from ...media.ingest import scan_directory
+
+    directory = Path(path).expanduser()
+    if not directory.is_dir():
+        return {"exists": False, "video_count": 0, "files": [], "known_project": None}
+    found = scan_directory(directory, config)
+    row = memory.conn.execute(
+        "SELECT id, name FROM projects WHERE root_dir = ?",
+        (str(directory.resolve()),),
+    ).fetchone()
+    return {
+        "exists": True,
+        "video_count": len(found["video"]),
+        "files": [p.name for p in found["video"][:20]],
+        "known_project": dict(row) if row else None,
+    }
+
+
+@router.get("/profiles")
+def list_profiles(config: AppConfig = Depends(get_config)) -> dict:
+    from ...director.profile import load_director_profile
+
+    profiles = []
+    profiles_dir = config.director.profiles_dir
+    if profiles_dir.is_dir():
+        for path in sorted(profiles_dir.glob("*.yaml")):
+            try:
+                profile = load_director_profile(profiles_dir, path.stem)
+                profiles.append({"name": profile.name, "description": profile.description})
+            except Exception as exc:
+                log.warning("skipping profile %s: %s", path.name, exc)
+    return {"profiles": profiles, "default": config.director.default_profile}
+
+
+class CreateRequest(BaseModel):
+    footage_path: str
+    prompt: str = ""
+    duration: float = Field(default=60.0, gt=0, le=3600)
+    profile: str | None = None
+    captions: str = "none"
+    caption_format: str | None = None
+    canvas: str | None = None
+
+
+@router.post("/create")
+def start_create(
+    body: CreateRequest,
+    config: AppConfig = Depends(get_config),
+) -> dict:
+    footage = Path(body.footage_path).expanduser()
+    if not footage.is_dir():
+        raise HTTPException(422, f"素材ディレクトリが見つかりません: {footage}")
+
+    def work(progress) -> str:
+        import asyncio
+
+        from ...ai.runtime import ModelRuntimeManager
+        from ...ai.services import AIServices
+        from ...pipeline import run_full_edit
+
+        conn = connect(config.paths.db_path)
+        try:
+            job_memory = MediaMemory(conn)
+            ai = AIServices(ModelRuntimeManager(config.models))
+            plan_id, _preview = asyncio.run(
+                run_full_edit(
+                    footage, config, job_memory, ai, Path.cwd(),
+                    prompt=body.prompt, duration=body.duration,
+                    profile=body.profile, captions=body.captions,
+                    caption_format=body.caption_format, canvas=body.canvas,
+                    progress=progress,
+                )
+            )
+            return plan_id
+        finally:
+            conn.close()
+
+    if not create_job.start(body.model_dump(), work):
+        raise HTTPException(409, "別の作成ジョブが実行中です")
+    return create_job.status()
+
+
+@router.get("/create/status")
+def create_status() -> dict:
+    return create_job.status()
 
 
 # ---------------------------------------------------------------------------

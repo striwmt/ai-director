@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from pathlib import Path
 from typing import Optional
 
@@ -138,48 +137,22 @@ def edit(
     memory = _open_memory(config)
     ai = _make_ai(config)
 
-    async def _run() -> tuple[str, Path, Path | None]:
-        from .director.orchestrator import run_director
-        from .pipeline import run_analyze
-        from .timeline.compiler import compile_timeline
-        from .timeline.preview import render_preview
-        from .timeline.validate import validate_edit_plan
-
-        project_id = await run_analyze(
-            footage, config, memory, ai, Path.cwd(),
-            color_override=_parse_override(color_profile),
-        )
-        plan_id, plan = await run_director(
-            project_id, config, memory, ai,
-            user_prompt=prompt, target_duration=duration, profile_name=profile,
-            captions=captions, caption_format=caption_format,
-        )
-        await ai.runtime.release_all()
-
-        validate_edit_plan(plan, memory)
-
-        plan_path = config.paths.plans_dir / f"{plan_id}.json"
-        plan_path.write_text(
-            json.dumps(plan.model_dump(), indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
-
-        preview_path: Path | None = None
-        if not no_preview:
-            timeline = compile_timeline(
-                plan, memory, canvas=canvas or config.output.canvas
-            )
-            preview_path = render_preview(
-                timeline, config, config.paths.renders_dir / f"{plan_id}.mp4"
-            )
-        return plan_id, plan_path, preview_path
+    from .pipeline import run_full_edit
 
     try:
-        plan_id, plan_path, preview_path = asyncio.run(_run())
+        plan_id, preview_path = asyncio.run(
+            run_full_edit(
+                footage, config, memory, ai, Path.cwd(),
+                prompt=prompt, duration=duration, profile=profile,
+                captions=captions, caption_format=caption_format,
+                canvas=canvas, color_override=_parse_override(color_profile),
+                render=not no_preview,
+            )
+        )
     except AIDirectorError as exc:
         raise typer.Exit(code=_fail(str(exc)))
     typer.echo(f"edit plan: {plan_id}")
-    typer.echo(f"  plan json: {plan_path}")
+    typer.echo(f"  plan json: {config.paths.plans_dir / f'{plan_id}.json'}")
     if preview_path:
         typer.echo(f"  preview:   {preview_path}")
 

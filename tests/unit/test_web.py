@@ -177,6 +177,77 @@ def test_scrub_frame_missing_media(client, populated):
     assert res.status_code == 404
 
 
+def test_footage_validate(client, tmp_path):
+    footage = tmp_path / "clips"
+    footage.mkdir()
+    (footage / "A.MP4").write_bytes(b"")
+    (footage / "B.mov").write_bytes(b"")
+    (footage / "B.LRF").write_bytes(b"")
+    (footage / "notes.txt").write_bytes(b"")
+
+    res = client.get(f"/api/footage/validate?path={footage}").json()
+    assert res["exists"] is True
+    assert res["video_count"] == 2
+    assert "A.MP4" in res["files"]
+    assert res["known_project"] is None
+
+    res = client.get(f"/api/footage/validate?path={tmp_path}/nope").json()
+    assert res["exists"] is False
+
+    res = client.get(f"/api/footage/validate?path={footage}/A.MP4").json()
+    assert res["exists"] is False
+
+
+def test_profiles_listing(client):
+    res = client.get("/api/profiles").json()
+    names = {p["name"] for p in res["profiles"]}
+    assert {"travel_vlog", "cinematic_travel", "talk"} <= names
+    assert res["default"] == "travel_vlog"
+
+
+def test_create_job_flow(client, tmp_path, monkeypatch):
+    import time
+
+    import aidirector.pipeline as pipeline_mod
+
+    footage = tmp_path / "footage"
+    footage.mkdir()
+    (footage / "X.MP4").write_bytes(b"")
+
+    async def fake_full_edit(*args, **kwargs):
+        assert kwargs["prompt"] == "テスト"
+        assert kwargs["duration"] == 30.0
+        kwargs["progress"]("director")
+        time.sleep(0.3)
+        return "plan_created_x", None
+
+    monkeypatch.setattr(pipeline_mod, "run_full_edit", fake_full_edit)
+
+    missing = client.post("/api/create", json={"footage_path": str(tmp_path / "zz")})
+    assert missing.status_code == 422
+
+    started = client.post("/api/create", json={
+        "footage_path": str(footage), "prompt": "テスト", "duration": 30,
+    })
+    assert started.status_code == 200
+    assert started.json()["status"] == "running"
+
+    # busy: a second create is rejected while the first runs
+    busy = client.post("/api/create", json={
+        "footage_path": str(footage), "prompt": "x", "duration": 10,
+    })
+    assert busy.status_code == 409
+
+    for _ in range(60):
+        st = client.get("/api/create/status").json()
+        if st["status"] in ("done", "failed"):
+            break
+        time.sleep(0.05)
+    assert st["status"] == "done", st
+    assert st["plan_id"] == "plan_created_x"
+    assert st["phase"] == "done"
+
+
 def test_index_served(client):
     res = client.get("/")
     assert res.status_code == 200

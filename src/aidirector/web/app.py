@@ -12,6 +12,21 @@ log = get_logger("web")
 _STATIC_DIR = Path(__file__).parent / "static"
 
 
+def _warm_ssl() -> None:
+    """Create the first SSLContext on the main thread.
+
+    Some OpenSSL 3.x builds fail with ``ssl.SSLError: unknown error`` when
+    the very first context is created off the main thread — which is exactly
+    where background create/render jobs build their httpx clients.
+    """
+    try:
+        import ssl
+
+        ssl.create_default_context()
+    except Exception as exc:  # pragma: no cover - environment specific
+        log.warning("ssl warmup failed: %s", exc)
+
+
 def create_app(config: AppConfig):
     try:
         from fastapi import FastAPI
@@ -20,6 +35,8 @@ def create_app(config: AppConfig):
         raise RuntimeError(
             "web extra not installed. Install with: uv sync --extra web"
         ) from exc
+
+    _warm_ssl()
 
     from .api.routes import router
 

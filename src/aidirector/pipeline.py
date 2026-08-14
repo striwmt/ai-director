@@ -10,7 +10,9 @@ logs, skips that stage and continues (§66).
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Callable
 
 from .ai.services import AIServices
 from .color.detect import ColorProfileDetector
@@ -127,11 +129,19 @@ async def run_analyze(
     project_root: Path,
     *,
     color_override: ColorProfile | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> str:
     """Full analysis: ingest + deterministic prep + phased AI passes.
 
-    Returns the project id.
+    Returns the project id. ``progress`` (optional) is called with a short
+    phase name at each phase boundary.
     """
+
+    def notify(phase: str) -> None:
+        if progress is not None:
+            progress(phase)
+
+    notify("ingest")
     run_ingest(
         footage, config, memory, project_root, color_override=color_override
     )
@@ -141,6 +151,7 @@ async def run_analyze(
     assets = memory.list_assets(project.id, kind="video")
 
     # -- Phase A: deterministic (no AI) --------------------------------
+    notify("segments")
     prepared: dict[str, Path] = {}
     for asset in assets:
         proxy = prepare_asset(asset, config, memory, registry)
@@ -148,6 +159,7 @@ async def run_analyze(
             prepared[asset.id] = proxy
 
     # -- Phase B: speech (Whisper loaded once) --------------------------
+    notify("speech")
     try:
         for asset in assets:
             if asset.id not in prepared:
@@ -159,6 +171,7 @@ async def run_analyze(
         log.warning("speech phase skipped: %s", exc)
 
     # -- Phase C: vision (VLM loaded once) ------------------------------
+    notify("vision")
     try:
         for asset in assets:
             if asset.id not in prepared:
@@ -177,6 +190,7 @@ async def run_analyze(
         log.warning("vision phase skipped: %s", exc)
 
     # -- Phase D: embeddings --------------------------------------------
+    notify("embedding")
     try:
         understandings: list[SegmentUnderstanding] = [
             build_understanding(segment, memory)
@@ -194,3 +208,67 @@ async def run_analyze(
     await ai.runtime.release_all()
     log.info("analysis complete for project %s (%d assets)", project.id, len(prepared))
     return project.id
+
+
+async def run_full_edit(
+    footage: Path,
+    config: AppConfig,
+    memory: MediaMemory,
+    ai: AIServices,
+    project_root: Path,
+    *,
+    prompt: str,
+    duration: float,
+    profile: str | None = None,
+    captions: str | None = None,
+    caption_format: str | None = None,
+    canvas: str | None = None,
+    color_override: ColorProfile | None = None,
+    render: bool = True,
+    progress: Callable[[str], None] | None = None,
+) -> tuple[str, Path | None]:
+    """Full creation workflow: analyze -> director -> validate -> save -> preview.
+
+    Shared by the CLI ``edit`` command and the web UI's create job.
+    Returns (plan_id, preview_path or None).
+    """
+    from .director.orchestrator import run_director
+    from .timeline.compiler import compile_timeline
+    from .timeline.preview import render_preview
+    from .timeline.validate import validate_edit_plan
+
+    def notify(phase: str) -> None:
+        if progress is not None:
+            progress(phase)
+
+    project_id = await run_analyze(
+        footage, config, memory, ai, project_root,
+        color_override=color_override, progress=progress,
+    )
+
+    notify("director")
+    plan_id, plan = await run_director(
+        project_id, config, memory, ai,
+        user_prompt=prompt, target_duration=duration, profile_name=profile,
+        captions=captions, caption_format=caption_format,
+    )
+    await ai.runtime.release_all()
+
+    validate_edit_plan(plan, memory)
+
+    plan_path = config.paths.plans_dir / f"{plan_id}.json"
+    plan_path.write_text(
+        json.dumps(plan.model_dump(), indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    preview_path: Path | None = None
+    if render:
+        notify("render")
+        timeline = compile_timeline(
+            plan, memory, canvas=canvas or config.output.canvas
+        )
+        preview_path = render_preview(
+            timeline, config, config.paths.renders_dir / f"{plan_id}.mp4"
+        )
+    return plan_id, preview_path
