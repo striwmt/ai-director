@@ -58,6 +58,51 @@ def state(memory: MediaMemory = Depends(get_memory)) -> dict:
     return {"projects": [dict(r) for r in rows]}
 
 
+@router.get("/projects")
+def list_projects(memory: MediaMemory = Depends(get_memory)) -> dict:
+    """Project gallery data for the home screen."""
+    rows = memory.conn.execute(
+        """
+        SELECT p.id, p.name, p.root_dir, p.created_at,
+            (SELECT COUNT(*) FROM assets a
+             WHERE a.project_id = p.id AND a.kind = 'video') AS video_count,
+            (SELECT COALESCE(SUM(a.duration), 0) FROM assets a
+             WHERE a.project_id = p.id AND a.kind = 'video') AS total_duration,
+            (SELECT COUNT(*) FROM edit_plans ep
+             JOIN director_runs r ON r.id = ep.run_id
+             WHERE r.project_id = p.id) AS plan_count
+        FROM projects p
+        ORDER BY p.created_at DESC
+        """
+    ).fetchall()
+    return {
+        "projects": [
+            {**dict(r), "thumb": f"/api/projects/{r['id']}/thumb.jpg"}
+            for r in rows
+        ]
+    }
+
+
+@router.get("/projects/{project_id}/thumb.jpg")
+def project_thumb(project_id: str, memory: MediaMemory = Depends(get_memory)):
+    rows = memory.conn.execute(
+        """
+        SELECT f.path FROM frames f
+        JOIN segments s ON s.id = f.segment_id
+        JOIN assets a ON a.id = s.asset_id
+        WHERE a.project_id = ?
+        ORDER BY a.file_name, s.idx, f.timestamp
+        LIMIT 20
+        """,
+        (project_id,),
+    ).fetchall()
+    for row in rows:
+        path = Path(row["path"])
+        if path.is_file():
+            return FileResponse(path, media_type="image/jpeg")
+    raise HTTPException(404, "no frame available")
+
+
 @router.get("/projects/{project_id}/plans")
 def list_plans(project_id: str, memory: MediaMemory = Depends(get_memory)) -> dict:
     rows = memory.conn.execute(

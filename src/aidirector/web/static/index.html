@@ -162,6 +162,37 @@
     display:flex; align-items:center; justify-content:center;
   }
   .modal-bg[hidden] { display:none; }
+
+  /* home screen: project gallery */
+  #homeView { max-width:1200px; margin:0 auto; padding:26px 18px 60px; }
+  #homeView h2 { margin-top:0; }
+  .projgrid {
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr));
+    gap:18px;
+  }
+  .projcard {
+    background:var(--surface); border:1px solid var(--line); border-radius:10px;
+    overflow:hidden; cursor:pointer; box-shadow:var(--shadow);
+    transition:border-color .15s, transform .15s;
+  }
+  .projcard:hover { border-color:var(--patina); transform:translateY(-2px); }
+  .projcard .pthumb {
+    aspect-ratio:16/9; background-color:#000;
+    background-size:cover; background-position:center;
+    display:flex; align-items:center; justify-content:center;
+    color:var(--muted); font-size:26px;
+  }
+  .projcard .pbody { padding:10px 14px 12px; }
+  .projcard .pname { font-weight:600; font-size:15px; letter-spacing:.02em; }
+  .projcard .pmeta { color:var(--muted); font-size:12px; margin-top:3px; }
+  .projcard.newcard {
+    border-style:dashed; display:flex; align-items:center; justify-content:center;
+    min-height:200px; color:var(--muted); font-size:15px; box-shadow:none;
+  }
+  .projcard.newcard:hover { color:var(--patina); }
+  body.home main { display:none; }
+  body.home .editor-only { display:none; }
+  body:not(.home) #homeView { display:none; }
   .modal {
     width:min(560px, 92vw); background:var(--surface); border:1px solid var(--line);
     border-radius:10px; padding:14px 16px; box-shadow:0 8px 32px rgba(0,0,0,.5);
@@ -183,32 +214,37 @@
 </head>
 <body>
 <header>
-  <h1>AI <span>Director</span></h1>
-  <span class="selgroup">
+  <h1 id="homeLink" style="cursor:pointer;" title="プロジェクト一覧へ戻る">AI <span>Director</span></h1>
+  <span class="selgroup editor-only">
     <span class="sellabel">プロジェクト</span>
     <select id="projectSel" title="プロジェクト(素材フォルダ単位)"></select>
     <button id="projRename" class="small" title="プロジェクト名を変更">✎</button>
   </span>
-  <span class="selgroup">
+  <span class="selgroup editor-only">
     <span class="sellabel">編集案</span>
     <select id="planSel" title="編集案(保存するたびに新バージョン)"></select>
     <button id="planRename" class="small" title="編集案の名前を変更">✎</button>
   </span>
-  <span class="total" id="total"></span>
+  <span class="total editor-only" id="total"></span>
   <span class="spacer"></span>
   <span class="runbadge" id="runBadge"></span>
   <span id="status"></span>
   <button id="createToggle">+ 新規作成</button>
-  <select id="exportSel" title="編集ソフトへ書き出し(元素材を参照します)">
+  <select id="exportSel" class="editor-only" title="編集ソフトへ書き出し(元素材を参照します)">
     <option value="">書き出し…</option>
     <option value="fcpxml">FCPXML(FCP / Resolve)</option>
     <option value="otio">OTIO</option>
     <option value="edl">EDL</option>
     <option value="srt">SRT 字幕</option>
   </select>
-  <button id="renderBtn">プレビュー生成</button>
-  <button id="saveBtn" class="primary" disabled>保存(新バージョン)</button>
+  <button id="renderBtn" class="editor-only">プレビュー生成</button>
+  <button id="saveBtn" class="primary editor-only" disabled>保存(新バージョン)</button>
 </header>
+
+<section id="homeView">
+  <h2 class="serif" style="font-size:19px;">プロジェクト</h2>
+  <div class="projgrid" id="projGrid"></div>
+</section>
 
 <section id="createPanel">
   <div id="createForm">
@@ -343,18 +379,64 @@ function fillProjects(projects, keepId){
   if(keepId && projects.some(p => p.id === keepId)) sel.value = keepId;
 }
 
-async function init(){
-  const state = await api("/api/state");
-  fillProjects(state.projects);
-  initCreate(state.projects);
-  if(!state.projects.length){
-    $("timeline").innerHTML = '<div class="empty">プロジェクトがありません。「+ 新規作成」から始めてください。</div>';
-    $("createPanel").classList.add("open");
-    return;
+async function refreshProjects(){
+  const { projects } = await api("/api/projects");
+  fillProjects(projects, projectId);
+  initCreate(projects);
+  renderHome(projects);
+  return projects;
+}
+
+function renderHome(projects){
+  const grid = $("projGrid");
+  grid.innerHTML = "";
+  for(const p of projects){
+    const card = document.createElement("div");
+    card.className = "projcard";
+    const minutes = (p.total_duration || 0) / 60;
+    card.innerHTML =
+      `<div class="pthumb">🎬</div>` +
+      `<div class="pbody"><div class="pname"></div>` +
+      `<div class="pmeta">動画 ${p.video_count} 本 ・ ${minutes.toFixed(1)} 分 ・ 編集案 ${p.plan_count} 件</div></div>`;
+    card.querySelector(".pname").textContent = p.name;
+    const thumbBox = card.querySelector(".pthumb");
+    const img = new Image();
+    img.onload = () => {
+      thumbBox.textContent = "";
+      thumbBox.style.backgroundImage = `url(${p.thumb})`;
+    };
+    img.src = p.thumb;
+    card.onclick = () => openProject(p.id);
+    grid.appendChild(card);
   }
-  projectId = state.projects[0].id;
-  $("projectSel").onchange = () => { projectId = $("projectSel").value; loadProject(); };
+  const create = document.createElement("div");
+  create.className = "projcard newcard";
+  create.textContent = "+ 新規作成";
+  create.onclick = () => {
+    $("createPanel").classList.add("open");
+    $("createPanel").scrollIntoView({behavior:"smooth"});
+  };
+  grid.appendChild(create);
+}
+
+function showHome(){
+  document.body.classList.add("home");
+  refreshProjects();
+}
+
+async function openProject(id){
+  projectId = id;
+  document.body.classList.remove("home");
+  $("projectSel").value = id;
   await loadProject();
+}
+
+async function init(){
+  $("homeLink").onclick = showHome;
+  $("projectSel").onchange = () => openProject($("projectSel").value);
+  const projects = await refreshProjects();
+  if(!projects.length) $("createPanel").classList.add("open");
+  document.body.classList.add("home");
 }
 
 async function loadProject(){
@@ -692,9 +774,7 @@ $("projRename").onclick = async () => {
       method:"PATCH", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({name: name.trim()}),
     });
-    const state = await api("/api/state");
-    fillProjects(state.projects, projectId);
-    initCreate(state.projects);
+    await refreshProjects();
     note("プロジェクト名を変更しました");
   }catch(e){ alert(e.message); }
 };
@@ -942,15 +1022,12 @@ function pollCreate(){
     }
     if(st.status === "done" && st.plan_id){
       badge.textContent = "作成完了";
-      const state = await api("/api/state");
-      fillProjects(state.projects);
-      initCreate(state.projects);
-      // The new plan's project is whichever contains it — reload via plans.
-      for(const p of state.projects){
+      const projects = await refreshProjects();
+      // The new plan's project is whichever contains it — open it there.
+      for(const p of projects){
         const { plans } = await api(`/api/projects/${p.id}/plans`);
         if(plans.some(x => x.id === st.plan_id)){
-          projectId = p.id; $("projectSel").value = p.id;
-          await loadProject();
+          await openProject(p.id);
           await loadPlan(st.plan_id);
           break;
         }

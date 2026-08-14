@@ -202,6 +202,22 @@ def test_export_endpoints(client, populated):
     assert client.get("/api/plans/plan_nope/export/fcpxml").status_code == 404
 
 
+def test_projects_gallery_and_thumb(client, populated):
+    res = client.get("/api/projects").json()
+    project = res["projects"][0]
+    assert project["id"] == populated["project_id"]
+    assert project["video_count"] == 1
+    assert project["total_duration"] == 12.5
+    assert project["plan_count"] == 1
+    assert project["thumb"].endswith("/thumb.jpg")
+
+    thumb = client.get(project["thumb"])
+    assert thumb.status_code == 200
+    assert thumb.headers["content-type"] == "image/jpeg"
+
+    assert client.get("/api/projects/prj_nope/thumb.jpg").status_code == 404
+
+
 def test_browse(client, tmp_path):
     (tmp_path / "trip" / "day1").mkdir(parents=True)
     (tmp_path / "trip" / "day2").mkdir()
