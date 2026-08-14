@@ -54,6 +54,13 @@ def validate_edit_plan(plan: EditPlan, memory: MediaMemory) -> list[str]:
                 problems.append(f"{label}: caption present but empty")
             if len(clip.caption.text) > 80 or len(clip.caption.secondary) > 80:
                 problems.append(f"{label}: caption text too long (max 80 chars)")
+        for line_no, line in enumerate(clip.subtitles):
+            if not (math.isfinite(line.start) and math.isfinite(line.end)):
+                problems.append(f"{label}: subtitle {line_no} has non-finite times")
+            elif line.start >= line.end:
+                problems.append(f"{label}: subtitle {line_no} start >= end")
+            if len(line.text) > 200:
+                problems.append(f"{label}: subtitle {line_no} text too long")
         if not math.isfinite(clip.audio.gain_db) or abs(clip.audio.gain_db) > 30:
             problems.append(f"{label}: implausible audio gain {clip.audio.gain_db}")
 

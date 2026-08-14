@@ -12,7 +12,7 @@ from pathlib import Path
 from ..config import AppConfig
 from ..logging import get_logger
 from ..process import run_command
-from .captions import build_caption_overlay
+from .captions import build_caption_overlay, build_subtitle_overlays
 from .model import Timeline
 
 log = get_logger("timeline.preview")
@@ -67,24 +67,42 @@ def render_preview(
             source = clip.proxy_path or clip.original_path
             part = tmp_dir / f"part_{clip.index:04d}.mp4"
 
-            # Caption: a transparent PNG (input 2) faded in/out and overlaid.
-            overlay = None
+            # Text overlays: scene caption (faded) + spoken-word subtitles,
+            # each a transparent PNG chained through `overlay`.
+            overlays = []
             if clip.caption is not None:
-                overlay = build_caption_overlay(
+                caption_overlay = build_caption_overlay(
                     clip.caption, canvas_w, canvas_h, clip.duration,
                     tmp_dir, clip.index,
                 )
-            caption_inputs: list[str] = []
-            if overlay is not None:
-                caption_inputs = [
-                    "-loop", "1", "-t", f"{clip.duration:.3f}",
-                    "-i", str(overlay.png_path),
-                ]
-                video_graph = (
-                    f"[0:v]{_fit_filter(canvas_w, canvas_h)}[v0];"
-                    f"[2:v]{overlay.filter_snippet}[cap];"
-                    f"[v0][cap]overlay=0:0:enable='{overlay.enable_expr}'[v]"
+                if caption_overlay is not None:
+                    overlays.append(caption_overlay)
+            if clip.subtitles:
+                overlays.extend(
+                    build_subtitle_overlays(
+                        clip.subtitles, clip.source_in, clip.duration,
+                        canvas_w, canvas_h, tmp_dir, clip.index,
+                    )
                 )
+
+            caption_inputs: list[str] = []
+            if overlays:
+                graph_parts = [f"[0:v]{_fit_filter(canvas_w, canvas_h)}[v0]"]
+                previous = "v0"
+                for k, item in enumerate(overlays):
+                    input_index = 2 + k
+                    caption_inputs += [
+                        "-loop", "1", "-t", f"{clip.duration:.3f}",
+                        "-i", str(item.png_path),
+                    ]
+                    graph_parts.append(f"[{input_index}:v]{item.filter_snippet}[ov{k}]")
+                    out_label = "v" if k == len(overlays) - 1 else f"v{k + 1}"
+                    graph_parts.append(
+                        f"[{previous}][ov{k}]overlay=0:0:"
+                        f"enable='{item.enable_expr}'[{out_label}]"
+                    )
+                    previous = f"v{k + 1}"
+                video_graph = ";".join(graph_parts)
             else:
                 video_graph = f"[0:v]{_fit_filter(canvas_w, canvas_h)}[v]"
 

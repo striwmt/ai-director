@@ -130,6 +130,8 @@ class OutputConfig(BaseModel):
     # Caption layout. Tokens: {PLACE} {DATE} {TIME} {YYYY} {MO} {DD} {HH} {MM};
     # "\n" starts the smaller second line. Tokens without facts vanish cleanly.
     caption_format: str = "{PLACE}\n{DATE} {TIME}"
+    # Burn spoken-word subtitles (from the transcript) into clips.
+    subtitles: bool = False
 
 
 class DirectorConfig(BaseModel):

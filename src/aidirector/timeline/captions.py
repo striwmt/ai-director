@@ -146,6 +146,116 @@ def render_caption_png(
     return True
 
 
+# ---------------------------------------------------------------------------
+# Spoken-word subtitles (bottom-centered, hard in/out like broadcast telops)
+
+
+@dataclass(frozen=True)
+class SubtitleOverlay:
+    png_path: Path
+    rel_start: float  # seconds from clip start
+    rel_end: float
+
+    @property
+    def filter_snippet(self) -> str:
+        return "format=rgba"
+
+    @property
+    def enable_expr(self) -> str:
+        return f"between(t,{self.rel_start:.3f},{self.rel_end:.3f})"
+
+
+def _wrap_text(text: str, draw, font, max_width: int) -> list[str]:
+    """Wrap to at most 2 lines; character-based so CJK (no spaces) works."""
+    def width(s: str) -> int:
+        left, _t, right, _b = draw.textbbox((0, 0), s, font=font)
+        return right - left
+
+    if width(text) <= max_width:
+        return [text]
+    # Find the split point closest to the middle that fits line 1.
+    cut = len(text)
+    while cut > 1 and width(text[:cut]) > max_width:
+        cut -= 1
+    line1, line2 = text[:cut], text[cut:]
+    while width(line2) > max_width and len(line2) > 1:
+        line2 = line2[:-1] + "…"
+    return [line1, line2]
+
+
+def render_subtitle_png(
+    text: str,
+    canvas_w: int,
+    canvas_h: int,
+    out_path: Path,
+    *,
+    font_file: str,
+) -> bool:
+    from PIL import Image, ImageDraw, ImageFont
+
+    text = text.strip()
+    if not text:
+        return False
+    size = max(15, round(canvas_h * 0.042))
+    try:
+        font = ImageFont.truetype(font_file, size)
+    except OSError as exc:
+        log.warning("cannot load font %s (%s); subtitle skipped", font_file, exc)
+        return False
+
+    image = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    lines = _wrap_text(text, draw, font, round(canvas_w * 0.88))
+
+    stroke = max(2, size // 12)
+    line_h = size + round(size * 0.3)
+    baseline = canvas_h - round(canvas_h * 0.06) - line_h * len(lines)
+    for i, line in enumerate(lines):
+        draw.text(
+            (canvas_w // 2, baseline + i * line_h),
+            line,
+            font=font,
+            fill=(255, 255, 255, 255),
+            stroke_width=stroke,
+            stroke_fill=(0, 0, 0, 190),
+            anchor="ma",
+        )
+    image.save(out_path)
+    return True
+
+
+def build_subtitle_overlays(
+    subtitles,
+    source_in: float,
+    clip_duration: float,
+    canvas_w: int,
+    canvas_h: int,
+    work_dir: Path,
+    clip_index: int,
+    *,
+    font_file: str | None = None,
+) -> list[SubtitleOverlay]:
+    """PNG + timing per subtitle line, clipped to the clip's span."""
+    overlays: list[SubtitleOverlay] = []
+    font: str | None = font_file
+    for line_no, line in enumerate(subtitles):
+        rel_start = max(0.0, line.start - source_in)
+        rel_end = min(clip_duration, line.end - source_in)
+        if rel_end - rel_start < 0.2 or not line.text.strip():
+            continue
+        if font is None:
+            needs_cjk = any(ord(ch) > 0x2E80 for ch in line.text)
+            font = find_caption_font(needs_cjk)
+            if font is None:
+                return []
+        png_path = work_dir / f"subtitle_{clip_index}_{line_no}.png"
+        if render_subtitle_png(line.text, canvas_w, canvas_h, png_path, font_file=font):
+            overlays.append(
+                SubtitleOverlay(png_path=png_path, rel_start=rel_start, rel_end=rel_end)
+            )
+    return overlays
+
+
 def build_caption_overlay(
     caption: ClipCaption,
     canvas_w: int,

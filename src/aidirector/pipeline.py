@@ -222,6 +222,7 @@ async def run_full_edit(
     profile: str | None = None,
     captions: str | None = None,
     caption_format: str | None = None,
+    subtitles: bool | None = None,
     canvas: str | None = None,
     color_override: ColorProfile | None = None,
     render: bool = True,
@@ -250,7 +251,7 @@ async def run_full_edit(
     plan_id, plan = await run_director(
         project_id, config, memory, ai,
         user_prompt=prompt, target_duration=duration, profile_name=profile,
-        captions=captions, caption_format=caption_format,
+        captions=captions, caption_format=caption_format, subtitles=subtitles,
     )
     await ai.runtime.release_all()
 

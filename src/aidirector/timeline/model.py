@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from ..director.schemas import ClipAudio, ClipCaption, ClipTransition
+from ..director.schemas import ClipAudio, ClipCaption, ClipTransition, SubtitleLine
 
 
 class TimelineClip(BaseModel):
@@ -29,6 +29,7 @@ class TimelineClip(BaseModel):
     audio: ClipAudio = ClipAudio()
     transition: ClipTransition = ClipTransition()
     caption: ClipCaption | None = None
+    subtitles: list[SubtitleLine] = Field(default_factory=list)
     story_beat: str = ""
     reason: str = ""
 

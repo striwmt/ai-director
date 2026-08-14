@@ -296,6 +296,7 @@ class CreateRequest(BaseModel):
     profile: str | None = None
     captions: str = "none"
     caption_format: str | None = None
+    subtitles: bool = False
     canvas: str | None = None
 
 
@@ -324,7 +325,8 @@ def start_create(
                     footage, config, job_memory, ai, Path.cwd(),
                     prompt=body.prompt, duration=body.duration,
                     profile=body.profile, captions=body.captions,
-                    caption_format=body.caption_format, canvas=body.canvas,
+                    caption_format=body.caption_format,
+                    subtitles=body.subtitles or None, canvas=body.canvas,
                     progress=progress,
                 )
             )

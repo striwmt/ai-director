@@ -71,7 +71,7 @@ def timeline_to_fcpxml(timeline: Timeline) -> str:
     # Captions become editable connected titles in the NLE — the burned-in
     # preview look is a draft; final typography belongs to the human editor.
     title_effect_id: str | None = None
-    if any(c.caption is not None for c in timeline.clips):
+    if any(c.caption is not None or c.subtitles for c in timeline.clips):
         title_effect_id = f"r{len(asset_ids) + 2}"
         ET.SubElement(
             resources, "effect",
@@ -126,6 +126,35 @@ def timeline_to_fcpxml(timeline: Timeline) -> str:
                 style_def, "text-style",
                 font="Helvetica",
                 fontSize="60",
+                fontColor="1 1 1 1",
+                alignment="center",
+            )
+        # Spoken-word subtitles ride on lane 2 as editable titles, aligned
+        # to the source-time positions inside the clip.
+        for line_no, line in enumerate(clip.subtitles):
+            if title_effect_id is None:
+                break
+            sub_start = max(line.start, clip.source_in)
+            sub_end = min(line.end, clip.source_out)
+            if sub_end - sub_start < 0.2:
+                continue
+            sub = ET.SubElement(
+                element, "title",
+                ref=title_effect_id,
+                name=line.text[:40],
+                lane="2",
+                offset=_rational_time(sub_start, rate),
+                duration=_rational_time(sub_end - sub_start, rate),
+            )
+            sub_text = ET.SubElement(sub, "text")
+            sub_ref = f"sub{i}_{line_no}"
+            sub_run = ET.SubElement(sub_text, "text-style", ref=sub_ref)
+            sub_run.text = line.text
+            sub_def = ET.SubElement(sub, "text-style-def", id=sub_ref)
+            ET.SubElement(
+                sub_def, "text-style",
+                font="Helvetica",
+                fontSize="45",
                 fontColor="1 1 1 1",
                 alignment="center",
             )

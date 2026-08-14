@@ -91,6 +91,7 @@ def compile_timeline(
                 audio=clip.audio,
                 transition=clip.transition,
                 caption=clip.caption,
+                subtitles=clip.subtitles,
                 story_beat=clip.story_beat,
                 reason=clip.reason,
             )

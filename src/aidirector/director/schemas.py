@@ -115,6 +115,16 @@ class ClipTransition(BaseModel):
     duration: float = 0.0
 
 
+class SubtitleLine(BaseModel):
+    """One spoken line shown as a subtitle. Times are SOURCE-file seconds
+    (same coordinate system as source_in/source_out), so trimming a clip
+    keeps subtitles aligned."""
+
+    start: float = Field(ge=0)
+    end: float = Field(gt=0)
+    text: str
+
+
 class ClipCaption(BaseModel):
     """Centered caption shown at the start of a clip (scene-change titles).
 
@@ -134,6 +144,9 @@ class EditClip(BaseModel):
     audio: ClipAudio = ClipAudio()
     transition: ClipTransition = ClipTransition()
     caption: ClipCaption | None = None
+    # Spoken-word subtitles from the transcript (deterministic facts,
+    # user-editable like everything else in the plan).
+    subtitles: list[SubtitleLine] = Field(default_factory=list)
     reason: str = ""
 
     @property

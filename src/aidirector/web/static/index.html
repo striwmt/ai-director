@@ -67,6 +67,9 @@
   .row input[type=number]{ width:76px; }
   .row input.cap { width:150px; }
   .dur { color:var(--patina); }
+  .subline { display:flex; gap:6px; align-items:center; width:100%; }
+  .subline input { flex:1; }
+  .subline .tc2 { color:var(--muted); font-size:11.5px; min-width:82px; }
 
   /* filmstrip trim editor */
   .strip {
@@ -208,6 +211,9 @@
         <input type="text" id="cfCapFmt" value="{PLACE}\n{DATE} {TIME}"
                title="トークン: {PLACE} {DATE} {TIME} {YYYY} {MO} {DD} {HH} {MM}"
                style="display:none; width:220px;">
+        <label style="display:flex; align-items:center; gap:5px;">
+          <input type="checkbox" id="cfSubtitles"> 発話テロップ(文字起こし)
+        </label>
       </div>
 
       <span></span>
@@ -358,6 +364,7 @@ function clipCard(entry, i){
       <span class="dur mono" data-k="dur">${fmt(c.source_out-c.source_in)}s</span>
       <span class="fname mono">(素材 ${fmt(s.seg_start??0)}–${fmt(s.seg_end??0)})</span>
     </div>
+    <div class="row" data-k="subsrow" style="flex-direction:column; align-items:stretch; gap:4px;"></div>
     <div class="row" data-k="caprow">
       ${ cap
         ? `<label>キャプション</label>
@@ -376,6 +383,23 @@ function clipCard(entry, i){
 
   // events
   buildStrip(mid.querySelector('[data-k=strip]'), entry, i, img);
+  const subsRow = mid.querySelector('[data-k=subsrow]');
+  (c.subtitles || []).forEach((line, j) => {
+    const row = document.createElement("div");
+    row.className = "subline";
+    row.innerHTML =
+      `<span class="tc2 mono">字幕 ${fmt(line.start)}–${fmt(line.end)}</span>` +
+      `<input type="text" value="${escapeAttr(line.text)}">` +
+      `<button class="small">✕</button>`;
+    row.querySelector("input").onchange = e => {
+      line.text = e.target.value; markFeedback("trim", i, "subtitle edited");
+    };
+    row.querySelector("button").onclick = () => {
+      c.subtitles.splice(j, 1); markFeedback("reject", i, "subtitle removed");
+      renderTimeline();
+    };
+    subsRow.appendChild(row);
+  });
   mid.querySelector('[data-k=in]').onchange = e => trim(i, "source_in", parseFloat(e.target.value));
   mid.querySelector('[data-k=out]').onchange = e => trim(i, "source_out", parseFloat(e.target.value));
   const capText = mid.querySelector('[data-k=capText]');
@@ -699,6 +723,7 @@ async function startCreate(){
     profile: $("cfProfile").value || null,
     captions: $("cfCaptions").value,
     caption_format: $("cfCaptions").value === "none" ? null : $("cfCapFmt").value,
+    subtitles: $("cfSubtitles").checked,
     canvas: $("cfCanvas").value,
   };
   if(!body.footage_path){ alert("素材パスを入力してください"); return; }

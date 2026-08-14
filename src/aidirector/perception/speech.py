@@ -76,3 +76,39 @@ def segment_transcripts(
         seg.id: transcript_for_span(transcript, seg.start, seg.end)
         for seg in segments
     }
+
+
+_MIN_SUBTITLE_SECONDS = 0.3
+
+
+def subtitle_lines_for_span(
+    transcript: Transcript | None, start: float, end: float
+) -> list[tuple[float, float, str]]:
+    """Spoken lines overlapping [start, end), clamped to the span.
+
+    Word timestamps give precise partial-overlap text; a segment without
+    word data falls back to its full text. Returns (start, end, text) in
+    SOURCE-time seconds. Deterministic — this is the fact layer for
+    subtitles.
+    """
+    if transcript is None:
+        return []
+    lines: list[tuple[float, float, str]] = []
+    for seg in transcript.segments:
+        if seg.end <= start or seg.start >= end:
+            continue
+        if seg.words:
+            words = [w for w in seg.words if w.end > start and w.start < end]
+            if not words:
+                continue
+            text = "".join(w.text for w in words).strip()
+            line_start, line_end = words[0].start, words[-1].end
+        else:
+            text = seg.text.strip()
+            line_start, line_end = seg.start, seg.end
+        line_start = max(line_start, start)
+        line_end = min(line_end, end)
+        if not text or line_end - line_start < _MIN_SUBTITLE_SECONDS:
+            continue
+        lines.append((round(line_start, 3), round(line_end, 3), text))
+    return lines

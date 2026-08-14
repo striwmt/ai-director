@@ -128,6 +128,10 @@ def edit(
             "{TIME} {YYYY} {MO} {DD} {HH} {MM}; \\n starts the second line"
         ),
     ),
+    subtitles: bool = typer.Option(
+        False, "--subtitles",
+        help="Burn spoken-word subtitles (from the transcript) into clips",
+    ),
     no_preview: bool = typer.Option(False, "--no-preview", help="Skip preview rendering"),
     config_file: Optional[Path] = typer.Option(None, "--config"),
     log_level: Optional[str] = typer.Option(None, "--log-level"),
@@ -145,6 +149,7 @@ def edit(
                 footage, config, memory, ai, Path.cwd(),
                 prompt=prompt, duration=duration, profile=profile,
                 captions=captions, caption_format=caption_format,
+                subtitles=subtitles or None,
                 canvas=canvas, color_override=_parse_override(color_profile),
                 render=not no_preview,
             )
@@ -187,7 +192,7 @@ def preview(
 @app.command()
 def export(
     plan_id: str = typer.Argument(..., help="Edit plan id (or 'latest')"),
-    format: str = typer.Option("fcpxml", "--format", help="fcpxml | otio | edl"),
+    format: str = typer.Option("fcpxml", "--format", help="fcpxml | otio | edl | srt"),
     output: Optional[Path] = typer.Option(None, "-o", "--output"),
     config_file: Optional[Path] = typer.Option(None, "--config"),
     log_level: Optional[str] = typer.Option(None, "--log-level"),
@@ -209,8 +214,11 @@ def export(
         elif format == "edl":
             from .timeline.edl import export_edl as exporter
             suffix = ".edl"
+        elif format == "srt":
+            from .timeline.srt import export_srt as exporter
+            suffix = ".srt"
         else:
-            raise typer.BadParameter("format must be fcpxml, otio or edl")
+            raise typer.BadParameter("format must be fcpxml, otio, edl or srt")
         path = exporter(
             timeline, output or config.paths.renders_dir / f"{plan_id}{suffix}"
         )

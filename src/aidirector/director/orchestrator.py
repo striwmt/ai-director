@@ -32,6 +32,7 @@ from .schemas import (
     EditPlanStory,
     SequencePlan,
     StoryPlan,
+    SubtitleLine,
 )
 from .selector import retrieve_candidates, select_for_beat
 from .story_planner import plan_story
@@ -172,6 +173,29 @@ def sequence_to_edit_plan(
     )
 
 
+def fill_subtitles(plan: EditPlan, memory: MediaMemory) -> EditPlan:
+    """Attach transcript lines overlapping each clip as subtitles.
+
+    Pure fact extraction (transcript + time math) — no AI judgement.
+    """
+    from ..perception.speech import subtitle_lines_for_span
+
+    transcripts: dict[str, object] = {}
+    for clip in plan.clips:
+        segment = memory.get_segment(clip.segment_id)
+        if segment is None:
+            continue
+        if segment.asset_id not in transcripts:
+            transcripts[segment.asset_id] = memory.get_transcript(segment.asset_id)
+        lines = subtitle_lines_for_span(
+            transcripts[segment.asset_id], clip.source_in, clip.source_out
+        )
+        clip.subtitles = [
+            SubtitleLine(start=s, end=e, text=t) for s, e, t in lines
+        ]
+    return plan
+
+
 async def run_director(
     project_id: str,
     config: AppConfig,
@@ -183,6 +207,7 @@ async def run_director(
     profile_name: str | None = None,
     captions: str | None = None,
     caption_format: str | None = None,
+    subtitles: bool | None = None,
 ) -> tuple[str, EditPlan]:
     """Run the full director pipeline. Returns (plan_id, edit_plan)."""
     profile_name = profile_name or config.director.default_profile
@@ -319,6 +344,9 @@ async def run_director(
             caption_format=caption_format or config.output.caption_format,
             segments_by_id=segments_by_id,
         )
+        want_subtitles = subtitles if subtitles is not None else config.output.subtitles
+        if want_subtitles:
+            plan = fill_subtitles(plan, memory)
         plan_id = memory.save_edit_plan(run_id, plan.model_dump_json(), version=1)
         memory.finish_director_run(run_id, "done")
         log.info(
