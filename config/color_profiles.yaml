@@ -1,0 +1,96 @@
+# Color profile detection rules and transform registry.
+#
+# Detection rules are evaluated top-down against probed metadata; the first
+# match with the highest confidence wins. Below `min_confidence` (see
+# default.yaml) the asset is stored as UNKNOWN — that is a normal state,
+# resolvable with `--color-profile` (AGENT.md §17/§18).
+#
+# Rule fields (all optional, AND-combined; values are case-insensitive):
+#   transfer:        ffprobe color_transfer values
+#   primaries:       ffprobe color_primaries values
+#   camera_make_contains / camera_model_contains: substring match
+#   filename_contains: substring match on the file name
+
+detection_rules:
+
+  - profile: hlg
+    transfer: [arib-std-b67]
+    confidence: 0.97
+
+  - profile: dji_dlog_m
+    camera_make_contains: [dji]
+    filename_contains: [dlogm, d-log_m, d_log_m]
+    confidence: 0.95
+
+  - profile: dji_dlog2
+    camera_make_contains: [dji]
+    filename_contains: [dlog2, d-log2, d_log2]
+    confidence: 0.95
+
+  # DJI log footage is often tagged bt709 in the container even when it is
+  # log — camera make alone is a weak signal, hence the low confidence.
+  - profile: dji_dlog_m
+    camera_make_contains: [dji]
+    transfer: [unknown, ""]
+    confidence: 0.55
+
+  - profile: canon_clog3
+    camera_make_contains: [canon]
+    filename_contains: [clog3, c-log3]
+    confidence: 0.9
+
+  - profile: sony_slog3
+    transfer: [s-log3, slog3]
+    confidence: 0.95
+
+  - profile: rec709
+    transfer: [bt709]
+    confidence: 0.85
+
+  - profile: rec709
+    transfer: [smpte170m, bt470bg]
+    confidence: 0.7
+
+# Transform registry. Vendor LUTs are NOT shipped with the repository
+# (AGENT.md §16) — place them under assets/luts/ and reference them here.
+# A transform whose LUT file is missing resolves to None and the pipeline
+# falls back (with a logged warning) to a neutral tone adjustment.
+
+transforms:
+
+  - id: dji_dlog2_to_rec709
+    source: dji_dlog2
+    destination: rec709
+    type: lut3d
+    path: assets/luts/DJI_DLog2_to_Rec709.cube
+    vendor: DJI
+    purposes: [analysis, preview]
+
+  - id: dji_dlog_to_rec709
+    source: dji_dlog
+    destination: rec709
+    type: lut3d
+    path: assets/luts/DJI_DLog_to_Rec709.cube
+    vendor: DJI
+    purposes: [analysis, preview]
+
+  - id: dji_dlog_m_to_rec709
+    source: dji_dlog_m
+    destination: rec709
+    type: lut3d
+    path: assets/luts/DJI_DLogM_to_Rec709.cube
+    vendor: DJI
+    purposes: [analysis, preview]
+
+  - id: hlg_to_rec709_tonemap
+    source: hlg
+    destination: rec709
+    type: ffmpeg_filter
+    filter: "zscale=t=linear:npl=1000,tonemap=hable:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv,format=yuv420p"
+    purposes: [analysis, preview]
+
+  - id: rec709_passthrough
+    source: rec709
+    destination: rec709
+    type: passthrough
+    purposes: [analysis, preview]

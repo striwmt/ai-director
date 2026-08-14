@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Director</title>
+<style>
+  :root {
+    --ground:#14161b; --surface:#1c1f26; --surface2:#22262e; --line:#2c313b;
+    --ink:#e9e7df; --muted:#939990; --patina:#7fb59a; --bronze:#c9a55e;
+    --dusk:#8a9bb0; --danger:#c97a6e;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:"Noto Sans CJK JP","Hiragino Kaku Gothic ProN",system-ui,sans-serif;
+    font-size:14px; line-height:1.6;
+  }
+  .mono { font-family:ui-monospace,Menlo,Consolas,monospace; font-variant-numeric:tabular-nums; }
+
+  header {
+    position:sticky; top:0; z-index:10; display:flex; align-items:center; gap:12px;
+    padding:10px 18px; background:var(--surface); border-bottom:1px solid var(--line);
+    flex-wrap:wrap;
+  }
+  header h1 { font-size:15px; margin:0 8px 0 0; font-weight:600; letter-spacing:.06em; }
+  header h1 span { color:var(--patina); }
+  select, input[type=text], input[type=number] {
+    background:var(--surface2); color:var(--ink); border:1px solid var(--line);
+    border-radius:5px; padding:4px 8px; font-size:13px;
+  }
+  input:focus, select:focus, button:focus-visible { outline:2px solid var(--patina); outline-offset:1px; }
+  button {
+    background:var(--surface2); color:var(--ink); border:1px solid var(--line);
+    border-radius:5px; padding:5px 12px; font-size:13px; cursor:pointer;
+  }
+  button:hover { border-color:var(--muted); }
+  button.primary { background:var(--patina); color:#10130f; border-color:transparent; font-weight:600; }
+  button.small { padding:2px 8px; font-size:12px; }
+  button:disabled { opacity:.45; cursor:default; }
+  .spacer { flex:1; }
+  .total { color:var(--muted); }
+  .total b { color:var(--ink); }
+  .total.over b { color:var(--danger); }
+  #status { color:var(--muted); font-size:12.5px; min-width:120px; }
+
+  main { display:grid; grid-template-columns: minmax(430px,1fr) minmax(360px,520px); gap:20px; padding:18px; }
+  @media (max-width:980px){ main { grid-template-columns:1fr; } }
+  h2 { font-size:13px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin:4px 0 10px; font-weight:600; }
+
+  /* timeline */
+  #timeline { display:flex; flex-direction:column; gap:10px; }
+  .clip {
+    display:grid; grid-template-columns:128px 1fr auto; gap:12px;
+    background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:10px;
+  }
+  .clip img { width:128px; border-radius:4px; display:block; background:#000; }
+  .clip .head { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+  .beat { font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; font-weight:700;
+          padding:1px 7px; border-radius:3px; color:#14161b; background:var(--dusk); }
+  .beat.b0{background:var(--bronze)} .beat.b1{background:var(--patina)} .beat.b2{background:var(--dusk)} .beat.b3{background:#b58ea6}
+  .fname { color:var(--muted); font-size:12px; }
+  .desc { color:var(--muted); font-size:12.5px; margin:2px 0 6px; display:-webkit-box;
+          -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .row { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:4px; }
+  .row label { color:var(--muted); font-size:12px; }
+  .row input[type=number]{ width:76px; }
+  .row input.cap { width:150px; }
+  .dur { color:var(--patina); }
+
+  /* filmstrip trim editor */
+  .strip {
+    position:relative; height:52px; margin-top:8px; border-radius:5px;
+    overflow:hidden; background:#000; user-select:none; touch-action:none;
+    border:1px solid var(--line);
+  }
+  .strip .tiles { position:absolute; inset:0; display:flex; }
+  .strip .tiles div { flex:1; background-size:cover; background-position:center; }
+  .strip .shade { position:absolute; top:0; bottom:0; background:rgba(10,12,15,.72); pointer-events:none; }
+  .strip .win {
+    position:absolute; top:0; bottom:0; border:2px solid var(--patina);
+    border-radius:4px; cursor:grab; box-sizing:border-box;
+  }
+  .strip .win:active { cursor:grabbing; }
+  .strip .handle {
+    position:absolute; top:0; bottom:0; width:12px; cursor:ew-resize;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .strip .handle::after {
+    content:""; width:4px; height:60%; border-radius:2px; background:var(--patina);
+  }
+  .strip .handle.l { left:-7px; } .strip .handle.r { right:-7px; }
+  .strip .tip {
+    position:absolute; top:2px; transform:translateX(-50%);
+    background:rgba(10,12,15,.9); color:var(--ink); font-size:11px;
+    padding:1px 6px; border-radius:3px; pointer-events:none; display:none;
+    font-family:ui-monospace,Menlo,monospace;
+  }
+  .ops { display:flex; flex-direction:column; gap:4px; }
+  .flag { color:var(--danger); font-size:11.5px; }
+
+  /* right column */
+  video { width:100%; border-radius:6px; background:#000; display:block; }
+  #renderState { color:var(--muted); font-size:12.5px; margin:6px 0 14px; }
+  #memory { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
+  .mem { background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:6px; cursor:pointer; }
+  .mem:hover { border-color:var(--patina); }
+  .mem img { width:100%; border-radius:3px; display:block; background:#000; }
+  .mem .t { font-size:11.5px; color:var(--muted); margin-top:4px;
+            display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .mem .m { font-size:11px; color:var(--patina); }
+  .empty { color:var(--muted); padding:30px 0; text-align:center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AI <span>Director</span></h1>
+  <select id="projectSel" title="プロジェクト"></select>
+  <select id="planSel" title="編集案"></select>
+  <span class="total" id="total"></span>
+  <span class="spacer"></span>
+  <span id="status"></span>
+  <button id="renderBtn">プレビュー生成</button>
+  <button id="saveBtn" class="primary" disabled>保存(新バージョン)</button>
+</header>
+
+<main>
+  <section>
+    <h2>タイムライン</h2>
+    <div id="timeline"></div>
+  </section>
+  <section>
+    <h2>プレビュー</h2>
+    <video id="player" controls preload="metadata"></video>
+    <div id="renderState">未レンダリング</div>
+    <h2>Media Memory(クリックで末尾に追加)</h2>
+    <div id="memory"></div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let projectId = null, planId = null;
+let plan = null;           // {intent, story, clips:[{clip, segment}]}
+let feedback = [];
+let beatColors = {};
+let dirty = false;
+let pollTimer = null;
+
+const fmt = n => (Math.round(n*10)/10).toFixed(1);
+
+function setDirty(v){ dirty = v; $("saveBtn").disabled = !v; }
+function note(msg){ $("status").textContent = msg; }
+
+async function api(path, opts){
+  const res = await fetch(path, opts);
+  if(!res.ok){
+    const body = await res.json().catch(()=>({detail:res.statusText}));
+    throw new Error(body.detail || res.statusText);
+  }
+  return res.json();
+}
+
+async function init(){
+  const state = await api("/api/state");
+  const sel = $("projectSel");
+  sel.innerHTML = "";
+  for(const p of state.projects){
+    const o = document.createElement("option");
+    o.value = p.id; o.textContent = p.name;
+    sel.appendChild(o);
+  }
+  if(!state.projects.length){
+    $("timeline").innerHTML = '<div class="empty">プロジェクトがありません。まず aidirector edit を実行してください。</div>';
+    return;
+  }
+  projectId = state.projects[0].id;
+  sel.onchange = () => { projectId = sel.value; loadProject(); };
+  await loadProject();
+}
+
+async function loadProject(){
+  const { plans } = await api(`/api/projects/${projectId}/plans`);
+  const sel = $("planSel");
+  sel.innerHTML = "";
+  for(const p of plans){
+    const o = document.createElement("option");
+    o.value = p.id;
+    o.textContent = `${p.id} (v${p.version})`;
+    sel.appendChild(o);
+  }
+  sel.onchange = () => loadPlan(sel.value);
+  loadMemory();
+  if(plans.length) await loadPlan(plans[0].id);
+  else $("timeline").innerHTML = '<div class="empty">編集案がまだありません。</div>';
+}
+
+async function loadPlan(id){
+  planId = id;
+  $("planSel").value = id;
+  plan = await api(`/api/plans/${id}`);
+  feedback = [];
+  setDirty(false);
+  beatColors = {};
+  for(const c of plan.clips){
+    const b = c.clip.story_beat;
+    if(!(b in beatColors)) beatColors[b] = Object.keys(beatColors).length % 4;
+  }
+  renderTimeline();
+  updatePreviewLink();
+}
+
+function totalDuration(){
+  return plan.clips.reduce((a,c)=>a + (c.clip.source_out - c.clip.source_in), 0);
+}
+
+function renderTimeline(){
+  const tl = $("timeline");
+  tl.innerHTML = "";
+  plan.clips.forEach((entry, i) => tl.appendChild(clipCard(entry, i)));
+  const target = plan.intent.target_duration;
+  const total = totalDuration();
+  const el = $("total");
+  el.innerHTML = `合計 <b>${fmt(total)}s</b> / 目標 ${fmt(target)}s`;
+  el.classList.toggle("over", total > target*1.15);
+}
+
+function clipCard(entry, i){
+  const c = entry.clip, s = entry.segment || {};
+  const div = document.createElement("div");
+  div.className = "clip";
+
+  const img = document.createElement("img");
+  img.src = s.thumb || ""; img.alt = "";
+
+  const mid = document.createElement("div");
+  const cap = c.caption;
+  mid.innerHTML = `
+    <div class="head">
+      <span class="beat b${beatColors[c.story_beat]??2}">${c.story_beat||"clip"}</span>
+      <span class="fname mono">${s.asset_name||c.segment_id}</span>
+      ${ (s.quality_flags||[]).length ? `<span class="flag">${s.quality_flags.join(", ")}</span>` : "" }
+    </div>
+    <div class="desc">${s.description||""}</div>
+    <div class="strip" data-k="strip" title="ドラッグでIN/OUTを調整、選択範囲をドラッグで移動"></div>
+    <div class="row">
+      <label>IN</label><input type="number" step="0.1" class="mono" data-k="in" value="${c.source_in}"
+        min="${s.seg_start??0}" max="${s.seg_end??""}">
+      <label>OUT</label><input type="number" step="0.1" class="mono" data-k="out" value="${c.source_out}"
+        min="${s.seg_start??0}" max="${s.seg_end??""}">
+      <span class="dur mono" data-k="dur">${fmt(c.source_out-c.source_in)}s</span>
+      <span class="fname mono">(素材 ${fmt(s.seg_start??0)}–${fmt(s.seg_end??0)})</span>
+    </div>
+    <div class="row" data-k="caprow">
+      ${ cap
+        ? `<label>キャプション</label>
+           <input type="text" class="cap" data-k="capText" value="${escapeAttr(cap.text)}" placeholder="場所">
+           <input type="text" class="cap" data-k="capSub" value="${escapeAttr(cap.secondary)}" placeholder="サブ行">
+           <button class="small" data-k="capDel">✕</button>`
+        : `<button class="small" data-k="capAdd">+ キャプション</button>` }
+    </div>`;
+
+  const ops = document.createElement("div");
+  ops.className = "ops";
+  ops.innerHTML = `
+    <button class="small" data-k="up" title="上へ" ${i===0?"disabled":""}>↑</button>
+    <button class="small" data-k="down" title="下へ" ${i===plan.clips.length-1?"disabled":""}>↓</button>
+    <button class="small" data-k="del" title="除外">✕</button>`;
+
+  // events
+  buildStrip(mid.querySelector('[data-k=strip]'), entry, i, img);
+  mid.querySelector('[data-k=in]').onchange = e => trim(i, "source_in", parseFloat(e.target.value));
+  mid.querySelector('[data-k=out]').onchange = e => trim(i, "source_out", parseFloat(e.target.value));
+  const capText = mid.querySelector('[data-k=capText]');
+  if(capText){
+    capText.onchange = e => { c.caption.text = e.target.value; markFeedback("trim", i, "caption edited"); };
+    mid.querySelector('[data-k=capSub]').onchange = e => { c.caption.secondary = e.target.value; markFeedback("trim", i, "caption edited"); };
+    mid.querySelector('[data-k=capDel]').onclick = () => { c.caption = null; markFeedback("reject", i, "caption removed"); renderTimeline(); };
+  } else {
+    mid.querySelector('[data-k=capAdd]').onclick = () => {
+      c.caption = {text:"", secondary:"", duration:3.0};
+      markFeedback("replace", i, "caption added"); renderTimeline();
+    };
+  }
+  ops.querySelector('[data-k=up]').onclick = () => move(i, -1);
+  ops.querySelector('[data-k=down]').onclick = () => move(i, +1);
+  ops.querySelector('[data-k=del]').onclick = () => {
+    plan.clips.splice(i,1); markFeedback("reject", i); renderTimeline();
+  };
+
+  div.append(img, mid, ops);
+  return div;
+}
+
+function escapeAttr(s){ return (s||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
+
+// --- graphical trim editor (filmstrip + drag handles) -----------------
+
+const MIN_CLIP = 0.5;
+const STRIP_TILES = 6;
+
+function buildStrip(el, entry, i, thumbImg){
+  const c = entry.clip, s = entry.segment;
+  if(!el || !s || !(s.seg_end > s.seg_start)) { if(el) el.style.display="none"; return; }
+  const lo = s.seg_start, hi = s.seg_end, span = hi - lo;
+
+  // filmstrip background: evenly sampled frames across the whole segment
+  const tiles = document.createElement("div");
+  tiles.className = "tiles";
+  for(let k = 0; k < STRIP_TILES; k++){
+    const t = lo + span * (k + 0.5) / STRIP_TILES;
+    const d = document.createElement("div");
+    d.style.backgroundImage =
+      `url(/api/segments/${s.segment_id}/frame.jpg?t=${t.toFixed(2)})`;
+    tiles.appendChild(d);
+  }
+  const shadeL = document.createElement("div"); shadeL.className = "shade";
+  const shadeR = document.createElement("div"); shadeR.className = "shade";
+  const win = document.createElement("div"); win.className = "win";
+  const hL = document.createElement("div"); hL.className = "handle l";
+  const hR = document.createElement("div"); hR.className = "handle r";
+  const tip = document.createElement("div"); tip.className = "tip";
+  win.append(hL, hR);
+  el.append(tiles, shadeL, shadeR, win, tip);
+
+  const numIn  = el.parentElement.querySelector('[data-k=in]');
+  const numOut = el.parentElement.querySelector('[data-k=out]');
+  const durEl  = el.parentElement.querySelector('[data-k=dur]');
+
+  const pct = t => (t - lo) / span * 100;
+  function layout(){
+    win.style.left  = pct(c.source_in) + "%";
+    win.style.width = Math.max(0.5, pct(c.source_out) - pct(c.source_in)) + "%";
+    shadeL.style.left = "0"; shadeL.style.width = pct(c.source_in) + "%";
+    shadeR.style.left = pct(c.source_out) + "%"; shadeR.style.right = "0";
+    numIn.value = c.source_in; numOut.value = c.source_out;
+    durEl.textContent = fmt(c.source_out - c.source_in) + "s";
+  }
+  layout();
+
+  let lastScrub = 0;
+  function scrubThumb(t){
+    const now = Date.now();
+    if(now - lastScrub < 150) return;
+    lastScrub = now;
+    thumbImg.src = `/api/segments/${s.segment_id}/frame.jpg?t=${t.toFixed(2)}`;
+  }
+  function showTip(t){
+    tip.style.display = "block";
+    tip.style.left = pct(t) + "%";
+    tip.textContent = fmt(t) + "s";
+  }
+
+  function drag(mode, e0){
+    e0.preventDefault();
+    const rect = el.getBoundingClientRect();
+    const t0 = { in: c.source_in, out: c.source_out, x: e0.clientX };
+    const beforeDur = c.source_out - c.source_in;
+
+    function onMove(e){
+      const dt = (e.clientX - t0.x) / rect.width * span;
+      if(mode === "in"){
+        c.source_in = clamp(t0.in + dt, lo, c.source_out - MIN_CLIP);
+        showTip(c.source_in); scrubThumb(c.source_in);
+      } else if(mode === "out"){
+        c.source_out = clamp(t0.out + dt, c.source_in + MIN_CLIP, hi);
+        showTip(c.source_out); scrubThumb(c.source_out);
+      } else { // slide the whole window, duration kept
+        const dur = t0.out - t0.in;
+        let nin = clamp(t0.in + dt, lo, hi - dur);
+        c.source_in = nin; c.source_out = nin + dur;
+        showTip(c.source_in); scrubThumb(c.source_in);
+      }
+      layout(); updateTotal();
+    }
+    function onUp(){
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      tip.style.display = "none";
+      c.source_in  = Math.round(c.source_in  * 20) / 20;  // 0.05s grid
+      c.source_out = Math.round(c.source_out * 20) / 20;
+      layout();
+      const afterDur = c.source_out - c.source_in;
+      const action = Math.abs(afterDur - beforeDur) < 0.01 ? "trim"
+                   : (afterDur < beforeDur ? "shorten" : "extend");
+      markFeedback(action, i);
+      updateTotal();
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
+
+  hL.onpointerdown = e => { e.stopPropagation(); drag("in", e); };
+  hR.onpointerdown = e => { e.stopPropagation(); drag("out", e); };
+  win.onpointerdown = e => drag("slide", e);
+}
+
+function clamp(v, lo, hi){ return Math.min(Math.max(v, lo), hi); }
+
+function updateTotal(){
+  const target = plan.intent.target_duration;
+  const total = totalDuration();
+  const el = $("total");
+  el.innerHTML = `合計 <b>${fmt(total)}s</b> / 目標 ${fmt(target)}s`;
+  el.classList.toggle("over", total > target*1.15);
+}
+
+function trim(i, key, value){
+  const entry = plan.clips[i], c = entry.clip, s = entry.segment || {};
+  if(Number.isFinite(value)){
+    const lo = s.seg_start ?? 0, hi = s.seg_end ?? Infinity;
+    value = Math.min(Math.max(value, lo), hi);
+    const before = c.source_out - c.source_in;
+    c[key] = Math.round(value*1000)/1000;
+    if(c.source_in >= c.source_out){
+      // keep at least 0.5s
+      if(key === "source_in") c.source_in = Math.max(lo, c.source_out - 0.5);
+      else c.source_out = Math.min(hi, c.source_in + 0.5);
+    }
+    const after = c.source_out - c.source_in;
+    markFeedback(after < before ? "shorten" : "extend", i);
+  }
+  renderTimeline();
+}
+
+function move(i, delta){
+  const j = i + delta;
+  if(j < 0 || j >= plan.clips.length) return;
+  const [item] = plan.clips.splice(i,1);
+  plan.clips.splice(j,0,item);
+  markFeedback("reorder", j);
+  renderTimeline();
+}
+
+function addFromMemory(seg){
+  const lastBeat = plan.clips.length ? plan.clips[plan.clips.length-1].clip.story_beat : "added";
+  const end = Math.min(seg.seg_end, seg.seg_start + 5.0);
+  plan.clips.push({
+    clip: {
+      segment_id: seg.segment_id, source_in: seg.seg_start, source_out: end,
+      story_beat: lastBeat, audio:{mode:"original",gain_db:0},
+      transition:{type:"cut",duration:0}, caption:null,
+      reason: "(手動追加)",
+    },
+    segment: seg,
+  });
+  markFeedback("replace", plan.clips.length-1, "segment added from memory");
+  renderTimeline();
+}
+
+function markFeedback(action, idx, reason){
+  feedback.push({action, decision_idx: idx, reason: reason || null});
+  setDirty(true);
+}
+
+async function loadMemory(){
+  const { segments } = await api(`/api/projects/${projectId}/segments`);
+  const grid = $("memory");
+  grid.innerHTML = "";
+  for(const seg of segments){
+    const d = document.createElement("div");
+    d.className = "mem";
+    d.innerHTML = `<img loading="lazy" src="${seg.thumb}" alt="">
+      <div class="m mono">${fmt(seg.seg_end-seg.seg_start)}s ・ ${seg.asset_name}</div>
+      <div class="t">${seg.description||"(解析なし)"}</div>`;
+    d.onclick = () => addFromMemory(seg);
+    grid.appendChild(d);
+  }
+}
+
+// --- save / render ---------------------------------------------------
+
+$("saveBtn").onclick = async () => {
+  try{
+    note("保存中…");
+    const body = { clips: plan.clips.map(c=>c.clip), feedback };
+    const res = await api(`/api/plans/${planId}/save`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(body),
+    });
+    note(`保存しました: ${res.plan_id} (v${res.version})`);
+    await loadProject();
+    await loadPlan(res.plan_id);
+  }catch(e){ note(""); alert("保存できません:\n" + e.message); }
+};
+
+$("renderBtn").onclick = async () => {
+  if(dirty && !confirm("未保存の変更はレンダリングに反映されません。現在の保存済みプランでレンダリングしますか?")) return;
+  await api(`/api/plans/${planId}/render`, {method:"POST"});
+  pollRender();
+};
+
+function pollRender(){
+  clearTimeout(pollTimer);
+  $("renderState").textContent = "レンダリング中…";
+  const tick = async () => {
+    const st = await api(`/api/plans/${planId}/render/status`);
+    if(st.status === "running"){ pollTimer = setTimeout(tick, 2000); return; }
+    if(st.status === "failed"){ $("renderState").textContent = "失敗: " + st.error; return; }
+    if(st.status === "done"){ updatePreviewLink(true); }
+  };
+  tick();
+}
+
+function updatePreviewLink(fresh){
+  fetch(`/api/plans/${planId}/preview.mp4`, {method:"HEAD"}).then(r => {
+    if(r.ok){
+      $("player").src = `/api/plans/${planId}/preview.mp4?t=${fresh?Date.now():0}`;
+      $("renderState").textContent = "レンダリング済み";
+    } else {
+      $("player").removeAttribute("src");
+      $("renderState").textContent = "未レンダリング";
+    }
+  });
+}
+
+init().catch(e => note("初期化エラー: " + e.message));
+</script>
+</body>
+</html>

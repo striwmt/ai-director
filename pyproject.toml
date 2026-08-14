@@ -1,0 +1,54 @@
+[project]
+name = "aidirector"
+version = "0.1.0"
+description = "Local AI Director: understands footage, plans a story, and produces an editable edit plan."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "typer>=0.12",
+    "rich>=13.7",
+    "httpx>=0.27",
+    # Caption PNG rendering (ffmpeg builds often lack drawtext/freetype)
+    "pillow>=10.0",
+]
+
+[project.optional-dependencies]
+speech = [
+    "faster-whisper>=1.0",
+    # CTranslate2 is a CUDA 12 build; ship the cu12 runtime libs so GPU
+    # decoding works even when torch brings a newer CUDA runtime.
+    "nvidia-cublas-cu12; sys_platform == 'linux'",
+    "nvidia-cudnn-cu12>=9,<10; sys_platform == 'linux'",
+]
+vision = ["transformers>=4.44", "torch>=2.3", "torchvision", "pillow>=10.0", "accelerate>=0.30"]
+embedding = [
+    "transformers>=4.44",
+    "torch>=2.3",
+    "pillow>=10.0",
+    "sentence-transformers>=3.0",  # official path for Qwen3-VL-Embedding
+]
+cv = ["opencv-python-headless>=4.9", "numpy>=1.26"]
+web = ["fastapi>=0.110", "uvicorn>=0.29"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[project.scripts]
+aidirector = "aidirector.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aidirector"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

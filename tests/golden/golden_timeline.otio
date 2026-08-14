@@ -1,0 +1,100 @@
+{
+  "OTIO_SCHEMA": "Timeline.1",
+  "name": "Golden Timeline",
+  "tracks": {
+    "OTIO_SCHEMA": "Stack.1",
+    "name": "tracks",
+    "children": [
+      {
+        "OTIO_SCHEMA": "Track.1",
+        "name": "V1",
+        "kind": "Video",
+        "children": [
+          {
+            "OTIO_SCHEMA": "Clip.2",
+            "name": "DJI_0042",
+            "source_range": {
+              "OTIO_SCHEMA": "TimeRange.1",
+              "start_time": {
+                "OTIO_SCHEMA": "RationalTime.1",
+                "rate": 29.97,
+                "value": 372
+              },
+              "duration": {
+                "OTIO_SCHEMA": "RationalTime.1",
+                "rate": 29.97,
+                "value": 141
+              }
+            },
+            "media_reference": {
+              "OTIO_SCHEMA": "ExternalReference.1",
+              "target_url": "file:///footage/DJI_0042.MP4"
+            },
+            "markers": [
+              {
+                "OTIO_SCHEMA": "Marker.2",
+                "name": "CAPTION: 佐原 / 2026-08-01 09:30",
+                "color": "GREEN",
+                "marked_range": {
+                  "OTIO_SCHEMA": "TimeRange.1",
+                  "start_time": {
+                    "OTIO_SCHEMA": "RationalTime.1",
+                    "rate": 29.97,
+                    "value": 372
+                  },
+                  "duration": {
+                    "OTIO_SCHEMA": "RationalTime.1",
+                    "rate": 29.97,
+                    "value": 90
+                  }
+                },
+                "metadata": {}
+              }
+            ],
+            "metadata": {
+              "aidirector": {
+                "segment_id": "seg_0042_03",
+                "story_beat": "opening",
+                "reason": "rain and townscape together",
+                "caption": {
+                  "text": "佐原",
+                  "secondary": "2026-08-01 09:30",
+                  "duration": 3.0
+                }
+              }
+            }
+          },
+          {
+            "OTIO_SCHEMA": "Clip.2",
+            "name": "DJI_0043",
+            "source_range": {
+              "OTIO_SCHEMA": "TimeRange.1",
+              "start_time": {
+                "OTIO_SCHEMA": "RationalTime.1",
+                "rate": 29.97,
+                "value": 60
+              },
+              "duration": {
+                "OTIO_SCHEMA": "RationalTime.1",
+                "rate": 29.97,
+                "value": 135
+              }
+            },
+            "media_reference": {
+              "OTIO_SCHEMA": "ExternalReference.1",
+              "target_url": "file:///footage/DJI_0043.MP4"
+            },
+            "markers": [],
+            "metadata": {
+              "aidirector": {
+                "segment_id": "seg_0043_01",
+                "story_beat": "exploration",
+                "reason": "entering the shop"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

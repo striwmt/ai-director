@@ -1,0 +1,55 @@
+# AI Director — compose setup.
+#
+#   docker compose up aidirector            # web UI  -> http://localhost:8484/
+#   docker compose --profile llm up -d      # + Director LLM (llama.cpp server)
+#
+#   # CLI runs (footage mounted read-only at /footage):
+#   docker compose run --rm aidirector aidirector analyze /footage
+#   docker compose run --rm aidirector aidirector edit /footage \
+#       --duration 60 --prompt "落ち着いた旅行Vlog" --captions beats
+#
+# Host paths (override with environment variables):
+#   AIDIRECTOR_FOOTAGE  camera footage directory   (default ./footage)
+#   AIDIRECTOR_DATA     persistent workspace       (default ./data)
+#
+# GPU: install the NVIDIA Container Toolkit, then uncomment the `gpus: all`
+# lines. On a single 16GB GPU, prefer running analyze first and starting
+# the llm profile afterwards (phase execution — see AGENT.md §38).
+
+services:
+
+  aidirector:
+    build: .
+    image: aidirector:latest
+    ports:
+      - "8484:8484"
+    volumes:
+      - ${AIDIRECTOR_FOOTAGE:-./footage}:/footage:ro
+      - ${AIDIRECTOR_DATA:-./data}:/workspace
+      - models-cache:/models
+      - ./assets/luts:/app/assets/luts:ro
+    # gpus: all
+    restart: unless-stopped
+
+  # Director LLM — Qwen3-8B Q4_K_M behind an OpenAI-compatible API.
+  # The GGUF (~4.7GB) is downloaded on first start into llama-cache.
+  # For GPU use switch the image to ghcr.io/ggml-org/llama.cpp:server-cuda
+  # and uncomment `gpus: all`.
+  director-llm:
+    profiles: ["llm"]
+    image: ghcr.io/ggml-org/llama.cpp:server
+    command: >
+      -hf Qwen/Qwen3-8B-GGUF:Q4_K_M
+      --host 0.0.0.0 --port 8102
+      -ngl 99 -c 16384 -fa on --jinja --reasoning-budget 0
+      --cache-type-k q8_0 --cache-type-v q8_0
+    volumes:
+      - llama-cache:/root/.cache/llama.cpp
+    ports:
+      - "8102:8102"
+    # gpus: all
+    restart: unless-stopped
+
+volumes:
+  models-cache:
+  llama-cache:

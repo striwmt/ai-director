@@ -1,0 +1,18 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+*.egg-info/
+dist/
+
+# Runtime state (media memory, proxies, renders)
+.aidirector/
+cache/
+
+# Local demo output and docker mounts
+demo/
+data/
+footage/
+
+# User-supplied vendor LUTs (licensed, not distributed)
+assets/luts/*.cube

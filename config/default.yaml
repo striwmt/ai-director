@@ -1,0 +1,39 @@
+# AI Director — default application configuration.
+# Model endpoints live in models.yaml; this file holds pipeline behavior.
+
+log_level: INFO
+
+paths:
+  data_dir: .aidirector
+
+proxy:
+  height: 540
+  crf: 23
+  preset: veryfast
+
+segmentation:
+  scene_threshold: 0.4
+  min_segment_seconds: 1.5
+  max_segment_seconds: 15.0
+  silence_noise_db: -35.0
+  silence_min_seconds: 0.6
+  frames_per_segment: 3
+  frame_height: 480
+
+color:
+  profiles_file: config/color_profiles.yaml
+  luts_dir: assets/luts
+  min_confidence: 0.5
+
+output:
+  canvas: auto        # auto | landscape | portrait | WxH (e.g. 1920x1080)
+  captions: none      # none | beats (at story-beat changes) | clips (every clip)
+  # Caption layout. Tokens: {PLACE} {DATE} {TIME} {YYYY} {MO} {DD} {HH} {MM};
+  # "\n" starts the smaller second line. Example: "{HH}:{MM} {PLACE}"
+  caption_format: "{PLACE}\n{DATE} {TIME}"
+
+director:
+  profiles_dir: config/director_profiles
+  default_profile: travel_vlog
+  max_revision_loops: 2
+  candidates_per_beat: 8

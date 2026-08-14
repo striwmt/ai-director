@@ -1,0 +1,21 @@
+name: cinematic_travel
+description: Slower, mood-driven travel film with strong visual composition.
+
+goals:
+  - build atmosphere before information
+  - let strong images breathe
+  - use natural sound as texture
+  - end on a quiet emotional note
+
+preferences:
+  chronology: flexible
+  visual_variety: high
+  natural_audio: essential
+  duplicate_shots: avoid
+  pace: slow
+
+avoid:
+  - rushed cutting
+  - talking-head dominance
+  - repeated compositions
+  - excessive transitions

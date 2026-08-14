@@ -1,0 +1,21 @@
+name: talk
+description: Talk / explanation video — tighten pacing without breaking meaning.
+
+goals:
+  - remove dead air and false starts
+  - keep every complete thought intact
+  - improve tempo while preserving meaningful pauses
+  - prefer the best take when takes repeat
+
+preferences:
+  chronology: strict
+  visual_variety: low
+  natural_audio: essential
+  duplicate_shots: allow
+  pace: medium
+
+avoid:
+  - cutting mid-word or mid-phrase
+  - removing pauses that carry meaning
+  - reordering statements in a way that changes meaning
+  - jump cuts more frequent than needed

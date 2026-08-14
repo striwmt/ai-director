@@ -1,0 +1,22 @@
+name: travel_vlog
+description: Calm travel vlog that follows the real progression of a trip.
+
+goals:
+  - viewer understands progression of the trip
+  - preserve memorable atmosphere
+  - balance visual beauty with narrative value
+  - retain meaningful location transitions
+
+preferences:
+  chronology: preferred
+  visual_variety: high
+  natural_audio: important
+  duplicate_shots: avoid
+  pace: medium
+
+avoid:
+  - repeated scenery
+  - meaningless long shots
+  - excessive transitions
+  - excessive jump cuts
+  - scenery-only montage with no story

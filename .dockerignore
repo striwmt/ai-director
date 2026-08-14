@@ -1,0 +1,15 @@
+.git
+.venv
+.aidirector
+.pytest_cache
+__pycache__
+*.pyc
+*.egg-info
+dist
+cache
+data
+demo
+footage
+tests/golden
+Dockerfile
+docker-compose.yaml
