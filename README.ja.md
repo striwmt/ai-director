@@ -1,167 +1,142 @@
 # AI Director
 
-[English README is here](README.md)
+[English](README.md) | 日本語 | [開発者向けドキュメント](docs/DEVELOPMENT.ja.md)
 
-**AI Director** は、映像・音声・写真を(カメラや色空間の違いを越えて)AIが
-*理解*し、ユーザーの意図から物語を設計して、人間が仕上げ可能な高品質の
-編集案を生成するローカルファーストのAIディレクターです。素材をスコアリング
-して自動カットするツールではありません。LLMディレクターが「何を、なぜ、
-どの順番で、何秒見せるか」を判断し、その理由まで説明できます。
+**撮影してきた動画を渡して「どんな動画にしたいか」を書くと、AIが素材の中身を理解して編集案を作ってくれる、完全ローカルの動画編集AIです。**
 
-アーキテクチャと設計原則の全文は [AGENT.md](AGENT.md) を参照してください。
+- 素材の映像・音声をAIが解析し、「どこで何が起きているか」を記憶します
+- 「雨の町を静かに歩く旅行Vlog、60秒で」のような指示から、構成・カット・順番・長さをAIディレクターが判断します
+- なぜそのカットを選んだのか、**すべての判断に理由が残ります**
+- 結果はプレビュー動画とタイムラインで確認でき、ブラウザ上で自由に手直しできます
+- 仕上げはDaVinci ResolveやFinal Cut Proへ引き継げます(元素材はそのまま参照)
+- **すべて自分のPCで動きます。** 素材がクラウドに送られることはありません
 
-## パイプライン
+## 必要なもの
 
-```
-Footage → Media Ingest → Color Management → Perception → Media Memory
-        → AI Director → Edit Plan → Timeline Compiler
-        → Preview MP4 / FCPXML / OTIO / EDL → DaVinci Resolve / FCP
-```
-
-- **カラーマネジメント済み解析**: Log素材(DJI D-Log2/D-Log/D-Log M、HLG等)は
-  AIが見る前にニュートラルなRec.709の*解析用表現*へ正規化されます。
-  元素材は一切変更せず、NLE書き出しは原本を参照します。
-- **Media Memory**: すべての観測結果(メタデータ、セグメント、文字起こし、
-  VLM解析、embedding、テクニカル特徴)はSQLiteに永続化され検索されます。
-  ディレクターは生のピクセルではなく記憶に対して推論します。
-- **モデルは交換可能な部品**: vision / director / speech / embedding の各
-  Providerは `config/models.yaml` で設定します(OpenAI互換サーバ、
-  faster-whisper、transformers)。ビジネスロジックはモデルライブラリに
-  一切触れません。単一GPUでのphase executionが標準の実行戦略です。
-
-リファレンスモデル構成(RTX 5060 Ti 16GBクラス、すべてローカル):
-
-| 役割 | モデル |
+| 項目 | 内容 |
 |---|---|
-| 映像理解 | Qwen3-VL-4B-Instruct(transformers, bf16) |
-| Director | Qwen3-8B Q4_K_M(llama.cppサーバ、OpenAI互換) |
-| Embedding | Qwen3-VL-Embedding-2B(sentence-transformers) |
-| 音声認識 | faster-whisper large-v3-turbo |
+| OS | Windows 10/11 または Linux |
+| GPU | NVIDIA GPU(VRAM 16GB推奨、例: RTX 5060 Ti)。無くても動きますが低速です |
+| ディスク | AIモデル用に約20GBの空き |
+| ffmpeg | 動画処理に必須(下記参照) |
 
-## セットアップ
+## インストール
 
-Python 3.11+、`uv`、PATH上の `ffmpeg`/`ffprobe` が必要です。
+### Windows
 
-```bash
-uv sync                      # コア
-uv sync --extra speech       # + faster-whisper(ローカルASR)
-uv sync --extra vision       # + transformers/torch(ローカルVLM)
-uv sync --extra embedding    # + sentence-transformers(検索)
-uv sync --extra web          # + レビュー/編集Web UI
-```
+1. [Releases](../../releases) から `AIDirector-Setup.exe` をダウンロードして実行(管理者権限不要)
+2. ffmpegを導入: `winget install Gyan.FFmpeg`
+3. スタートメニューの「AI Director」を起動 — **初回はAIモデルなど数GBをダウンロードするため時間がかかります**
 
-モデルのエンドポイントは `config/models.yaml` で設定します。Director LLMの
-起動例:
+### Linux
+
+1. [Releases](../../releases) から `AIDirector-x86_64.AppImage` をダウンロード
+2. 実行権限を付けて起動:
 
 ```bash
-llama-server -hf Qwen/Qwen3-8B-GGUF:Q4_K_M --port 8102 -ngl 99 \
-  -c 16384 -fa on --jinja --reasoning-budget 0
+chmod +x AIDirector-*.AppImage
+./AIDirector-*.AppImage
 ```
 
-メーカー製LUTは `assets/luts/` に配置してください
-(`assets/luts/README.md` 参照)。
+3. ffmpegは各ディストリのパッケージで(`sudo zypper in ffmpeg` / `sudo apt install ffmpeg`)
+
+### インストーラを使わない場合
+
+Python 3.9以上があれば、リポジトリを取得して1コマンドです:
+
+```bash
+git clone <このリポジトリ> && cd ai-director
+python desktop/bootstrap.py
+```
+
+### AIディレクター用LLMについて
+
+編集判断を行うLLM(Qwen3-8B)はllama.cppで動きます。`config/models.yaml` の
+`director` を `provider: llama-server` にしておくと、**必要なときだけ自動で
+起動・終了**します(初回はモデル約5GBを自動ダウンロード)。llama.cppの導入は
+Windowsなら `winget install ggml.llamacpp`、Linuxは[公式リリース](https://github.com/ggml-org/llama.cpp/releases)から。
 
 ## 使い方
 
-```bash
-aidirector ingest ./footage                      # スキャン + メタデータ + 色プロファイル判定
-aidirector ingest ./footage --color-profile dji-dlog2   # 手動指定
+起動するとアプリウィンドウが開きます(ウィンドウを閉じるとアプリも終了します)。
 
-aidirector analyze ./footage                     # セグメント、ASR、VLM、embedding
+### 1. 動画を作る
 
-aidirector edit ./footage \
-  --duration 90 \
-  --profile travel_vlog \
-  --prompt "雨の町を静かに歩く旅行Vlog" \
-  --captions beats \
-  --caption-format "{HH}:{MM} {PLACE}"           # → edit-plan.json + preview.mp4
+1. **「+ 新規作成」** をクリック
+2. **素材パス**に撮影した動画が入ったフォルダを指定(動画の本数がその場で表示されます)
+3. **指示**に作りたい動画を日本語で書く
+   例: 「静かな日本の旅。電車で到着し、川沿いを歩き、古い寺を訪ね、鐘の音で締めくくる」
+4. 目標の長さ・スタイル(旅行Vlog / シネマティック / トーク)を選ぶ
+5. お好みでオプションを設定:
+   - **キャプション** — 場面転換時に時刻と場所を中央に表示(表示形式も指定可、例: `{HH}:{MM} {PLACE}`)
+   - **発話テロップ** — 話した内容を文字起こしして字幕として表示
+6. **「作成開始」** — 解析からレンダリングまでの進行状況が表示されます
 
-aidirector search ./footage "夕焼け"              # Media Memoryのセマンティック検索
+初回は素材の解析(AIが映像を「見て」内容を記憶する処理)に時間がかかりますが、
+**2回目以降は解析結果を再利用**するので、指示を変えての作り直しは数分で終わります。
 
-aidirector preview latest --canvas landscape     # プレビュー再レンダリング
-aidirector export latest --format fcpxml         # NLE書き出し(原本メディア参照)
-```
+### 2. 手直しする
 
-状態は `./.aidirector/` に保存されます(SQLiteのMedia Memory、proxy、
-フレーム、レンダリング結果、編集案)。
+できあがった編集案はタイムラインに並びます。各カットには**AIが選んだ理由**が添えられています。
 
-### 場面キャプション
+- **並べ替え** — ↑↓ボタン
+- **使う範囲の調整** — フィルムストリップの緑の枠をドラッグ(枠の端でIN/OUT、中央づかみで位置ずらし)
+- **除外** — ✕ボタン
+- **キャプション・テロップの修正** — その場でテキスト編集
+- **カットの追加** — 右側の「Media Memory」(AIが理解した全素材の一覧)からクリックで追加
 
-`--captions beats|clips` で、場面転換後に時刻・場所のキャプションを中央に
-表示します。場所はDirectorが素材から明確に特定できた場合のみ命名し、時刻は
-撮影メタデータ由来です — 事実がなければキャプションは出しません。レイアウトは
-`--caption-format` でテンプレート指定できます(例: `"{HH}:{MM} {PLACE}"`。
-トークン: `{PLACE} {DATE} {TIME} {YYYY} {MO} {DD} {HH} {MM}`、`\n` で
-小さめの2行目)。キャプションはEdit Planの一部(編集可能なJSON)で、
-NLE書き出しにも引き継がれます(FCPXMLタイトル / OTIOマーカー / EDLコメント)。
+**「保存」**すると新しいバージョンとして保存され(元の案も残ります)、
+**「プレビュー生成」**で動画を作り直せます。
 
-### レビュー / 編集 Web UI
+### 3. 編集ソフトへ引き継ぐ
 
-```bash
-aidirector web            # → http://127.0.0.1:8484/
-aidirector app            # デスクトップモード: 独立したアプリウィンドウ(下記参照)
-```
-
-ブラウザから作成(素材パス+プロンプト+設定を入力、フェーズ/ログの
-ライブ進行表示付き)、並べ替え、トリム(フィルムストリップ上でIN/OUT
-ハンドルをドラッグ)、クリップ除外、キャプション編集、Media Memoryからの
-セグメント追加、新バージョンとしての保存(操作はフィードバックとして記録)、
-プレビューの再レンダリングができます。
-
-### Director LLMのマネージド起動(手動サーバ不要)
-
-`config/models.yaml` で `provider: llama-server` を指定すると、AI Director
-がdirectorフェーズの前後で `llama-server` を自動起動・自動停止します —
-映像解析中にVRAMを占有せず、ポート上に既存サーバがあればそれを再利用
-します。Windows / Linux 両対応です(キャプションフォントとCUDAランタイム
-の解決はプラットフォーム別に行われます)。
-
-## デスクトップアプリ(Windows / Linux)
-
-`aidirector app` は**独立したアプリウィンドウ**(Chromiumのappモード —
-WindowsではEdge、他ではChrome/Chromium)を開きます。ウィンドウを閉じると
-バックエンドも終了します。新しいマシンでは1コマンドでセットアップできます:
+納得できたら、お使いの編集ソフト用に書き出せます。書き出しは**撮影した元
+ファイルをそのまま参照**します(D-LogなどのLog素材も原本のまま。カラー
+グレーディングは編集ソフトで自由にできます)。
 
 ```bash
-python desktop/bootstrap.py     # uvを取得→環境構築→アプリ起動
+aidirector export latest --format fcpxml   # Final Cut Pro / DaVinci Resolve
+aidirector export latest --format otio     # OpenTimelineIO
+aidirector export latest --format edl      # CMX3600 EDL
+aidirector export latest --format srt      # 字幕ファイル
 ```
 
-インストーラ: `installer/appimage/build.sh` でLinux AppImageをローカル
-ビルドできます。CI(`installers.yml`)はこれに加えWindowsの
-`AIDirector-Setup.exe`(NSIS)とサードパーティライセンス集をビルドします。
-`desktop/tauri` にはTauri v2シェルのテンプレートもあります —
-[desktop/README.md](desktop/README.md) 参照。
+キャプションとテロップは編集可能なタイトル(FCPXML)や字幕ファイル(SRT)として引き継がれます。
 
-## Docker
+## データの保存場所
 
-```bash
-docker compose up -d aidirector          # Web UI → http://localhost:8484/
-docker compose --profile llm up -d       # + Director LLM(llama.cppサーバ)
+| データ | 場所 |
+|---|---|
+| 解析結果・編集案・プレビュー | 作業フォルダの `.aidirector/` |
+| AIモデル | `~/.cache/huggingface`、`~/.cache/llama.cpp` |
+| **撮影した元素材** | **一切変更されません** |
 
-# CLI(素材は /footage に読み取り専用でマウントされます):
-docker compose run --rm aidirector aidirector analyze /footage
-docker compose run --rm aidirector aidirector edit /footage \
-  --duration 60 --prompt "落ち着いた旅行Vlog"
-```
+## よくある質問・トラブル
 
-- ホスト側パス: `AIDIRECTOR_FOOTAGE`(デフォルト `./footage`)と
-  `AIDIRECTOR_DATA`(デフォルト `./data`、Media Memoryとレンダリング結果を
-  保持)で指定します。
-- GPU: [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
-  を導入し、`docker-compose.yaml` の `gpus: all` のコメントを外して、
-  `director-llm` を `:server-cuda` イメージに切り替えてください。GPUなし
-  でもすべてCPUで動作します(低速ですが機能します)。
-- 16GB単一GPUでは、まず `analyze` を実行してから `llm` プロファイルを起動
-  してください — phase executionによりモデル同士のVRAM競合を避けます
-  (AGENT.md §38)。
-- イメージサイズ: デフォルトビルドはtorch/transformersを含むため数GBに
-  なります。`--build-arg EXTRAS="--extra web --extra speech"` で削減できます。
+**Q. GPUのメモリが足りないと言われる / 解析が途中で止まる**
+16GB GPUでは設計上、モデルを1つずつ順番に使います。他のGPUアプリ(ゲーム、
+別のLLM)を閉じてから実行してください。
 
-## 開発
+**Q. 色がおかしい(白っぽい映像のまま解析される)**
+D-LogなどのLog素材はメーカー公式LUTがあると正確に解析できます。公式サイトから
+LUT(.cube)をダウンロードして `assets/luts/` に置いてください(ライセンスの
+関係で同梱できません)。無い場合も簡易補正で動作します。
 
-```bash
-uv run pytest             # unit + golden + integrationテスト(ffmpeg必須)
-```
+**Q. 色の自動判定が間違っている**
+作成時に明示指定できます: `aidirector ingest ./footage --color-profile dji-dlog2`
 
-ディレクトリ構成はAGENT.md §6に従います:
-`src/aidirector/{media,color,perception,ai,memory,director,tools,timeline,web}`。
+**Q. アプリウィンドウが開かない**
+Chrome/Edge/Chromiumが見つからない場合は通常のブラウザタブで開きます。
+`aidirector app --no-window` で最初からブラウザ表示にできます。
+
+**Q. 編集案の質がいまいち**
+指示を具体的に(見せたい順番・雰囲気・残したい場面)。素材が多いほど、また
+撮影時刻メタデータがあるほど、時系列を活かした構成になります。
+
+## ライセンス
+
+MIT License。同梱・利用している第三者ソフトウェアは
+[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
+
+開発に参加する方は [docs/DEVELOPMENT.ja.md](docs/DEVELOPMENT.ja.md) と
+[AGENT.md](AGENT.md)(設計原則)へ。

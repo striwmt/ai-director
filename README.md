@@ -1,164 +1,152 @@
 # AI Director
 
-[日本語版 README はこちら](README.ja.md)
+English | [日本語](README.ja.md) | [Developer docs](docs/DEVELOPMENT.md)
 
-**AI Director** is a local-first AI that *understands* your footage — video,
-audio, photos, across cameras and color spaces — plans a story from your
-intent, and produces a high-quality, human-finishable edit plan. It is not a
-"score clips and auto-cut" tool: an LLM director decides what to show, why,
-in what order, and for how long, and can explain every decision.
+**Hand it your footage and tell it what kind of video you want — a fully
+local AI that understands your material and drafts the edit for you.**
 
-See [AGENT.md](AGENT.md) for the full architecture and design principles.
+- Analyzes your video and audio locally and remembers what happens where
+- From a prompt like *"a calm 60-second travel vlog of walking through a
+  rainy town"*, an LLM director decides the story, the cuts, their order
+  and their length
+- **Every decision comes with a written reason**
+- Review the result as a preview video and a timeline, and adjust
+  everything in your browser
+- Hand off to DaVinci Resolve or Final Cut Pro for finishing — your
+  original camera files are referenced untouched
+- **Everything runs on your own PC.** No footage ever leaves your machine
 
-## Pipeline
+## Requirements
 
-```
-Footage → Media Ingest → Color Management → Perception → Media Memory
-        → AI Director → Edit Plan → Timeline Compiler
-        → Preview MP4 / FCPXML / OTIO / EDL → DaVinci Resolve / FCP
-```
-
-- **Color-managed analysis**: Log footage (DJI D-Log2/D-Log/D-Log M, HLG, …)
-  is normalized to a neutral Rec.709 *analysis representation* before any
-  AI sees it. Original camera files are never modified; NLE exports
-  reference the originals.
-- **Media Memory**: every observation (metadata, segments, transcripts,
-  VLM analysis, embeddings, technical features) is persisted in SQLite and
-  searched — the director reasons over memory, not raw pixels.
-- **Replaceable models**: vision / director / speech / embedding providers
-  are configured in `config/models.yaml` (OpenAI-compatible servers,
-  faster-whisper, transformers). Business logic never touches model
-  libraries. Single-GPU phase execution is the default runtime strategy.
-
-Reference model set (RTX 5060 Ti 16GB class, all local):
-
-| Role | Model |
+| | |
 |---|---|
-| Vision | Qwen3-VL-4B-Instruct (transformers, bf16) |
-| Director | Qwen3-8B Q4_K_M (llama.cpp server, OpenAI-compatible) |
-| Embedding | Qwen3-VL-Embedding-2B (sentence-transformers) |
-| Speech | faster-whisper large-v3-turbo |
+| OS | Windows 10/11 or Linux |
+| GPU | NVIDIA GPU (16 GB VRAM recommended, e.g. RTX 5060 Ti). Works CPU-only, but slowly |
+| Disk | ~20 GB free for AI models |
+| ffmpeg | Required for all media processing (see below) |
 
-## Setup
+## Install
 
-Requires Python 3.11+, `uv`, and `ffmpeg`/`ffprobe` on PATH.
+### Windows
 
-```bash
-uv sync                      # core
-uv sync --extra speech       # + faster-whisper (local ASR)
-uv sync --extra vision       # + transformers/torch (local VLM)
-uv sync --extra embedding    # + sentence-transformers (retrieval)
-uv sync --extra web          # + review/edit web UI
-```
+1. Download and run `AIDirector-Setup.exe` from [Releases](../../releases)
+   (no admin rights needed)
+2. Install ffmpeg: `winget install Gyan.FFmpeg`
+3. Launch **AI Director** from the Start menu — **the first run downloads
+   several GB of AI models**, so give it time
 
-Configure model endpoints in `config/models.yaml`. Start the Director LLM,
-e.g.:
+### Linux
 
-```bash
-llama-server -hf Qwen/Qwen3-8B-GGUF:Q4_K_M --port 8102 -ngl 99 \
-  -c 16384 -fa on --jinja --reasoning-budget 0
-```
-
-Place vendor LUTs under `assets/luts/` (see `assets/luts/README.md`).
-
-## Usage
+1. Download `AIDirector-x86_64.AppImage` from [Releases](../../releases)
+2. Make it executable and run:
 
 ```bash
-aidirector ingest ./footage                      # scan + metadata + color detection
-aidirector ingest ./footage --color-profile dji-dlog2   # manual override
-
-aidirector analyze ./footage                     # segments, ASR, VLM, embeddings
-
-aidirector edit ./footage \
-  --duration 90 \
-  --profile travel_vlog \
-  --prompt "雨の町を静かに歩く旅行Vlog" \
-  --captions beats \
-  --caption-format "{HH}:{MM} {PLACE}"           # → edit-plan.json + preview.mp4
-
-aidirector search ./footage "夕焼け"              # semantic search over media memory
-
-aidirector preview latest --canvas landscape     # re-render preview
-aidirector export latest --format fcpxml         # NLE export (original media refs)
+chmod +x AIDirector-*.AppImage
+./AIDirector-*.AppImage
 ```
 
-State lives in `./.aidirector/` (SQLite media memory, proxies, frames,
-renders, plans).
+3. Install ffmpeg from your distribution
+   (`sudo apt install ffmpeg` / `sudo zypper in ffmpeg`)
 
-### Scene captions
+### Without an installer
 
-`--captions beats|clips` overlays a centered time/place caption after scene
-changes. The place comes from the Director (only when clearly identifiable),
-the time from recording metadata — no facts, no caption. Layout is
-templatable via `--caption-format`, e.g. `"{HH}:{MM} {PLACE}"`
-(tokens: `{PLACE} {DATE} {TIME} {YYYY} {MO} {DD} {HH} {MM}`, `\n` starts a
-smaller second line). Captions live in the edit plan (editable JSON) and are
-carried into NLE exports as FCPXML titles / OTIO markers / EDL comments.
-
-### Review / edit UI
+Any Python 3.9+ will do:
 
 ```bash
-aidirector web            # → http://127.0.0.1:8484/
-aidirector app            # desktop mode: standalone app window (see below)
+git clone <this repo> && cd ai-director
+python desktop/bootstrap.py
 ```
 
-Create edits from the browser (footage path + prompt + settings, with live
-phase/log progress), then reorder, trim (graphical filmstrip with draggable
-in/out handles), remove clips, edit captions, add segments from Media
-Memory, save as a new plan version (user actions are recorded as feedback),
-and re-render the preview.
+### About the Director LLM
 
-### Managed Director LLM (no manual server)
+Editing decisions are made by a local LLM (Qwen3-8B) running on llama.cpp.
+With `provider: llama-server` in `config/models.yaml`, AI Director
+**starts and stops the server automatically** exactly when it is needed
+(the ~5 GB model downloads itself on first use). Install llama.cpp via
+`winget install ggml.llamacpp` on Windows or the
+[official releases](https://github.com/ggml-org/llama.cpp/releases) on Linux.
 
-Set `provider: llama-server` in `config/models.yaml` and AI Director
-starts/stops `llama-server` itself around the director phase — it never
-holds VRAM during vision analysis, and an already-running server on the
-port is reused instead. Works on Windows and Linux (caption fonts and the
-CUDA runtime shims are resolved per-platform).
+## How to use
 
-## Desktop app (Windows / Linux)
+Launching opens an app window (closing the window quits the app).
 
-`aidirector app` opens a **standalone app window** (Chromium app mode —
-Edge on Windows, Chrome/Chromium elsewhere); closing the window shuts the
-backend down. On a fresh machine, one command sets everything up:
+### 1. Create a video
+
+1. Click **“+ 新規作成” (New)**
+2. Point **素材パス** (footage path) at the folder with your clips — the
+   number of videos found is shown immediately
+3. Write what you want in the **指示** (prompt) field
+4. Pick a target length and a style (travel vlog / cinematic / talk)
+5. Optional:
+   - **Captions** — time & place shown at scene changes (format
+     configurable, e.g. `{HH}:{MM} {PLACE}`)
+   - **Spoken-word subtitles** — transcribed speech burned in as subtitles
+6. Hit **作成開始 (Create)** and watch the phase-by-phase progress
+
+The first pass over new footage takes a while (the AI actually watches and
+listens to it); **analysis is remembered**, so re-creating with a different
+prompt takes only minutes.
+
+### 2. Adjust
+
+The draft appears as a timeline; every cut shows **why the AI chose it**.
+
+- **Reorder** with the ↑↓ buttons
+- **Trim** by dragging the green window on each clip's filmstrip
+  (edges = in/out, grab the middle to slide)
+- **Remove** with ✕
+- **Edit captions and subtitles** in place
+- **Add cuts** from the Media Memory panel — everything the AI understood
+  about your footage, one click to append
+
+**Save** stores a new version (the original draft is kept);
+**プレビュー生成 (Render preview)** rebuilds the video.
+
+### 3. Hand off to your editor
+
+Exports always reference **your original camera files** (Log footage stays
+Log — grade it yourself in your NLE):
 
 ```bash
-python desktop/bootstrap.py     # downloads uv, builds the env, launches the app
+aidirector export latest --format fcpxml   # Final Cut Pro / DaVinci Resolve
+aidirector export latest --format otio     # OpenTimelineIO
+aidirector export latest --format edl      # CMX3600 EDL
+aidirector export latest --format srt      # subtitle file
 ```
 
-Installers: `installer/appimage/build.sh` produces a Linux AppImage
-locally; CI (`installers.yml`) builds it together with a Windows
-`AIDirector-Setup.exe` (NSIS) and the third-party license bundle.
-`desktop/tauri` additionally holds a Tauri v2 shell template — see
-[desktop/README.md](desktop/README.md).
+Captions and subtitles carry over as editable titles (FCPXML) and SRT.
 
-## Docker
+## Where your data lives
 
-```bash
-docker compose up -d aidirector          # web UI → http://localhost:8484/
-docker compose --profile llm up -d       # + Director LLM (llama.cpp server)
+| Data | Location |
+|---|---|
+| Analysis, drafts, previews | `.aidirector/` in the working folder |
+| AI models | `~/.cache/huggingface`, `~/.cache/llama.cpp` |
+| **Your camera files** | **never modified** |
 
-# CLI (footage is mounted read-only at /footage):
-docker compose run --rm aidirector aidirector analyze /footage
-docker compose run --rm aidirector aidirector edit /footage \
-  --duration 60 --prompt "落ち着いた旅行Vlog"
-```
+## FAQ / Troubleshooting
 
-- Host paths: set `AIDIRECTOR_FOOTAGE` (default `./footage`) and
-  `AIDIRECTOR_DATA` (default `./data`, holds the media memory and renders).
-- GPU: install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
-  uncomment the `gpus: all` lines in `docker-compose.yaml`, and switch
-  `director-llm` to the `:server-cuda` image. Without a GPU everything
-  falls back to CPU (slow but functional).
-- On a single 16GB GPU run `analyze` first, then start the `llm` profile —
-  phase execution keeps models from fighting over VRAM (AGENT.md §38).
-- Image size: the default build bundles torch/transformers (several GB).
-  Trim with `--build-arg EXTRAS="--extra web --extra speech"`.
+**Out of GPU memory / analysis stalls** — on 16 GB GPUs the models run one
+at a time by design; close other GPU apps (games, other LLMs) first.
 
-## Development
+**Colors look washed out during analysis** — Log footage (D-Log etc.) is
+analyzed most accurately with the vendor's official LUT: download the
+`.cube` from the manufacturer and drop it into `assets/luts/` (licensing
+forbids bundling them). Without one, a neutral fallback is used.
 
-```bash
-uv run pytest             # unit + golden + integration tests (ffmpeg required)
-```
+**Wrong color profile detected** — override it explicitly:
+`aidirector ingest ./footage --color-profile dji-dlog2`
 
-Layout follows AGENT.md §6: `src/aidirector/{media,color,perception,ai,memory,director,tools,timeline,web}`.
+**No app window opens** — without Chrome/Edge/Chromium it falls back to a
+normal browser tab; force that with `aidirector app --no-window`.
+
+**Draft quality is so-so** — be specific in the prompt (order, mood, what
+must stay). More footage and intact recording-time metadata both help.
+
+## License
+
+MIT. Third-party software is listed in
+[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+
+Contributing? Start with [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) and
+[AGENT.md](AGENT.md) (design principles).
