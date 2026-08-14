@@ -88,7 +88,7 @@ Icon=aidirector
 Terminal=false
 Categories=AudioVideo;Video;AudioVideoEditing;
 DESKTOP
-cp "$ROOT/desktop/tauri/src-tauri/icons/icon.png" "$APPDIR/aidirector.png"
+cp "$ROOT/assets/icon/icon.png" "$APPDIR/aidirector.png"
 cp "$APPDIR/aidirector.png" "$APPDIR/.DirIcon"
 
 # --- 5. pack ------------------------------------------------------------

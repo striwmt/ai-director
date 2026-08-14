@@ -11,6 +11,9 @@ OutFile "..\..\dist\AIDirector-Setup.exe"
 InstallDir "$LOCALAPPDATA\AIDirector"
 RequestExecutionLevel user
 
+!define MUI_ICON "aidirector.ico"
+!define MUI_UNICON "aidirector.ico"
+
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "stage\app\LICENSE"
 !insertmacro MUI_PAGE_DIRECTORY
@@ -25,6 +28,7 @@ Section "AI Director"
   SetOutPath "$INSTDIR"
   File /r "stage\app"
   File /r "stage\bin"
+  File "aidirector.ico"
 
   ; Launcher: uv sync is a fast no-op once the env exists; the first run
   ; downloads the Python environment (several GB).
@@ -37,7 +41,7 @@ Section "AI Director"
   FileClose $0
 
   CreateDirectory "$SMPROGRAMS\AI Director"
-  CreateShortcut "$SMPROGRAMS\AI Director\AI Director.lnk" "$INSTDIR\AIDirector.cmd"
+  CreateShortcut "$SMPROGRAMS\AI Director\AI Director.lnk" "$INSTDIR\AIDirector.cmd" "" "$INSTDIR\aidirector.ico"
   CreateShortcut "$SMPROGRAMS\AI Director\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
 
   WriteUninstaller "$INSTDIR\Uninstall.exe"
@@ -45,6 +49,8 @@ Section "AI Director"
       "DisplayName" "AI Director"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AIDirector" \
       "UninstallString" "$INSTDIR\Uninstall.exe"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AIDirector" \
+      "DisplayIcon" "$INSTDIR\aidirector.ico"
 SectionEnd
 
 Section "Uninstall"

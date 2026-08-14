@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icon/icon.png" width="128" alt="AI Director アイコン">
+</p>
+
 # AI Director
 
 [English](README.md) | 日本語 | [開発者向けドキュメント](docs/DEVELOPMENT.ja.md)

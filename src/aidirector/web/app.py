@@ -51,4 +51,8 @@ def create_app(config: AppConfig):
     def index() -> FileResponse:
         return FileResponse(_STATIC_DIR / "index.html", media_type="text/html")
 
+    @app.get("/favicon.png", include_in_schema=False)
+    def favicon() -> FileResponse:
+        return FileResponse(_STATIC_DIR / "favicon.png", media_type="image/png")
+
     return app

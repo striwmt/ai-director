@@ -365,3 +365,10 @@ def test_index_served(client):
     res = client.get("/")
     assert res.status_code == 200
     assert "AI" in res.text and "タイムライン" in res.text
+
+
+def test_favicon_served(client):
+    res = client.get("/favicon.png")
+    assert res.status_code == 200
+    assert res.headers["content-type"] == "image/png"
+    assert res.content.startswith(b"\x89PNG")
