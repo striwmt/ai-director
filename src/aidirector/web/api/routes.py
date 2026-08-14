@@ -31,6 +31,7 @@ log = get_logger("web.api")
 router = APIRouter(prefix="/api")
 jobs = RenderJobs()
 create_job = PipelineJob()
+music_job = PipelineJob()  # music-library analysis (GPU: one at a time)
 
 
 def get_config(request: Request) -> AppConfig:
@@ -478,6 +479,8 @@ def start_create(
     footage = Path(body.footage_path).expanduser()
     if not footage.is_dir():
         raise HTTPException(422, f"素材ディレクトリが見つかりません: {footage}")
+    if music_job.status()["status"] == "running":
+        raise HTTPException(409, "BGM解析の実行中は作成を開始できません")
     music_dir: Path | None = None
     if body.music_path and body.music_path.strip():
         music_dir = Path(body.music_path.strip()).expanduser()
@@ -519,6 +522,120 @@ def start_create(
 @router.get("/create/status")
 def create_status() -> dict:
     return create_job.status()
+
+
+# ---------------------------------------------------------------------------
+# Music library (BGM candidates + analysis)
+
+
+@router.get("/music/tracks")
+def list_music_library(
+    path: str,
+    config: AppConfig = Depends(get_config),
+    memory: MediaMemory = Depends(get_memory),
+) -> dict:
+    """List BGM candidates in a folder with cached analysis facts.
+
+    Fast by design: file scan + content hash + DB lookup only — no ffprobe
+    on unanalyzed files, no model calls.
+    """
+    from ...director.music import MUSIC_EXTENSIONS
+    from ...perception.music import music_track_id
+
+    directory = Path(path).expanduser()
+    if not directory.is_dir():
+        raise HTTPException(422, f"BGMディレクトリが見つかりません: {directory}")
+    tracks = []
+    analyzed_count = 0
+    for entry in sorted(directory.rglob("*")):
+        if not entry.is_file() or entry.name.startswith("."):
+            continue
+        if entry.suffix.lower() not in MUSIC_EXTENSIONS:
+            continue
+        info: dict = {
+            "file_name": entry.name,
+            "path": str(entry.resolve()),
+            "analyzed": False,
+            "duration": None,
+        }
+        try:
+            record = memory.get_music_track(music_track_id(entry))
+        except OSError:
+            record = None
+        if record is not None:
+            features = record.features or {}
+            lyrics = record.lyrics or {}
+            info.update({
+                "analyzed": bool(record.analyzed_at),
+                "duration": record.duration,
+                "bpm": features.get("bpm"),
+                "key": (f"{features.get('key', '')} "
+                        f"{features.get('scale', '')}").strip() or None,
+                "energy": features.get("energy"),
+                "tags": [t["tag"] for t in (record.tags or [])][:6],
+                "is_vocal": lyrics.get("is_vocal"),
+                "lyrics_language": lyrics.get("language"),
+                "description": record.description or "",
+            })
+            if record.analyzed_at:
+                analyzed_count += 1
+        tracks.append(info)
+        if len(tracks) >= 500:
+            break
+    return {
+        "path": str(directory),
+        "tracks": tracks,
+        "analyzed_count": analyzed_count,
+    }
+
+
+class MusicAnalyzeRequest(BaseModel):
+    path: str
+
+
+@router.post("/music/analyze")
+def start_music_analyze(
+    body: MusicAnalyzeRequest,
+    config: AppConfig = Depends(get_config),
+) -> dict:
+    music_dir = Path(body.path).expanduser()
+    if not music_dir.is_dir():
+        raise HTTPException(422, f"BGMディレクトリが見つかりません: {music_dir}")
+    if create_job.status()["status"] == "running":
+        raise HTTPException(409, "作成ジョブの実行中はBGM解析を開始できません")
+
+    def work(progress) -> str:
+        import asyncio
+
+        from ...ai.runtime import ModelRuntimeManager
+        from ...ai.services import AIServices
+        from ...perception.music import analyze_music_library
+
+        conn = connect(config.paths.db_path)
+        try:
+            job_memory = MediaMemory(conn)
+            ai = AIServices(ModelRuntimeManager(config.models))
+
+            async def _run() -> int:
+                try:
+                    return await analyze_music_library(
+                        music_dir, config, job_memory, ai, progress
+                    )
+                finally:
+                    await ai.runtime.release_all()
+
+            return str(asyncio.run(_run()))
+        finally:
+            conn.close()
+
+    if not music_job.start(body.model_dump(), work):
+        raise HTTPException(409, "別のBGM解析が実行中です")
+    return music_job.status()
+
+
+@router.get("/music/analyze/status")
+def music_analyze_status() -> dict:
+    return music_job.status()
 
 
 # ---------------------------------------------------------------------------

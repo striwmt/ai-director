@@ -211,6 +211,18 @@
   .diritem:hover { background:var(--ground); color:var(--patina); }
   .diritem .ico { color:var(--muted); margin-right:8px; }
   .modal-foot { display:flex; align-items:center; gap:10px; margin-top:12px; }
+
+  /* BGM library modal */
+  .mustrack { padding:8px 12px; border-bottom:1px solid var(--line);
+              display:flex; gap:10px; align-items:flex-start; }
+  .mustrack:last-child { border-bottom:none; }
+  .mustrack .facts { font-size:12px; color:var(--muted); margin-top:2px; }
+  .mustrack .desc2 { font-size:12px; color:var(--muted); margin-top:2px;
+                     font-style:italic; overflow-wrap:anywhere; }
+  .mubadge { font-size:10px; letter-spacing:.06em; padding:1px 6px;
+             border-radius:3px; background:var(--surface2);
+             border:1px solid var(--line); color:var(--muted); }
+  .mubadge.ok { color:var(--patina); border-color:var(--patina); }
   @keyframes pulse { 50% { opacity:.45; } }
   .runbadge.on { animation:pulse 1.6s ease-in-out infinite; }
   @media (prefers-reduced-motion: reduce){ .runbadge.on { animation:none; } }
@@ -356,6 +368,23 @@
   </div>
 </div>
 
+<div id="musicModal" class="modal-bg" hidden>
+  <div class="modal" style="width:min(780px, 94vw);">
+    <div class="modal-head">BGMライブラリ — クリックで差し替え</div>
+    <div style="display:flex; gap:6px; margin-bottom:8px;">
+      <input type="text" id="mlPath" style="flex:1" placeholder="/path/to/music">
+      <button id="mlLoad" type="button">読み込み</button>
+    </div>
+    <div class="dirlist" id="mlList" style="max-height:400px;"></div>
+    <div class="modal-foot">
+      <span class="fname" id="mlInfo"></span>
+      <span class="spacer"></span>
+      <button id="mlAnalyze" type="button">このフォルダを解析</button>
+      <button id="mlClose" type="button">閉じる</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const $ = id => document.getElementById(id);
 let projectId = null, planId = null;
@@ -442,15 +471,26 @@ async function openProject(id){
   projectId = id;
   document.body.classList.remove("home");
   $("projectSel").value = id;
+  location.hash = `project=${id}`;
   await loadProject();
 }
 
 async function init(){
-  $("homeLink").onclick = showHome;
+  $("homeLink").onclick = () => { location.hash = ""; showHome(); };
   $("projectSel").onchange = () => openProject($("projectSel").value);
   const projects = await refreshProjects();
   if(!projects.length) $("createPanel").classList.add("open");
   document.body.classList.add("home");
+  // Deep link / reload restore: #project=<id>&plan=<id>
+  const params = new URLSearchParams(location.hash.slice(1));
+  const wanted = params.get("project");
+  if(wanted && projects.some(p => p.id === wanted)){
+    await openProject(wanted);
+    const wantedPlan = params.get("plan");
+    if(wantedPlan){
+      try{ await loadPlan(wantedPlan); }catch(e){ /* stale link */ }
+    }
+  }
 }
 
 async function loadProject(){
@@ -476,6 +516,7 @@ async function loadPlan(id){
   planId = id;
   $("planSel").value = id;
   plan = await api(`/api/plans/${id}`);
+  if(projectId) location.hash = `project=${projectId}&plan=${id}`;
   feedback = [];
   setDirty(false);
   beatColors = {};
@@ -495,7 +536,16 @@ function renderMusicCard(){
   const holder = $("musicCard");
   holder.innerHTML = "";
   const m = plan && plan.music;
-  if(!m) return;
+  if(!m){
+    if(plan){
+      const add = document.createElement("button");
+      add.className = "small";
+      add.textContent = "+ BGMを追加…";
+      add.onclick = openMusicLibrary;
+      holder.appendChild(add);
+    }
+    return;
+  }
   const div = document.createElement("div");
   div.className = "clip";
   div.innerHTML = `
@@ -507,6 +557,7 @@ function renderMusicCard(){
         ${ m.duration ? `<span class="fname mono">${fmt(m.duration)}s</span>` : "" }
       </div>
       <div class="desc">${escapeAttr(m.reason || "")}</div>
+      <div class="desc" data-k="mFacts" style="font-size:12px;"></div>
       <div class="row">
         <label style="display:flex; align-items:center; gap:5px;">
           <input type="checkbox" data-k="mEnabled" ${m.enabled ? "checked" : ""}> 有効
@@ -518,6 +569,7 @@ function renderMusicCard(){
                title="本編の音声が鳴っている間はBGMを自動で下げます">
           <input type="checkbox" data-k="mDuck" ${m.ducking ? "checked" : ""}> ダッキング
         </label>
+        <button class="small" data-k="mChange">曲を変更…</button>
         <button class="small" data-k="mDel">✕ 削除</button>
       </div>
     </div>`;
@@ -529,6 +581,7 @@ function renderMusicCard(){
     setDirty(true);
   };
   q("mDuck").onchange = e => { m.ducking = e.target.checked; setDirty(true); };
+  q("mChange").onclick = openMusicLibrary;
   q("mDel").onclick = () => {
     if(!confirm("BGMをこの編集案から削除しますか?")) return;
     plan.music = null;
@@ -536,6 +589,28 @@ function renderMusicCard(){
     renderMusicCard();
   };
   holder.appendChild(div);
+  loadMusicFacts(m, q("mFacts"));
+}
+
+async function loadMusicFacts(m, el){
+  // Analysis facts for the chosen track (cached lookup, cheap).
+  try{
+    const parent = m.path.replace(/[/\\][^/\\]+$/, "");
+    const res = await api(`/api/music/tracks?path=${encodeURIComponent(parent)}`);
+    const t = res.tracks.find(x => x.path === m.path || x.file_name === m.file_name);
+    if(t && t.analyzed) el.textContent = musicFactsLine(t);
+  }catch(e){ /* facts are optional */ }
+}
+
+function musicFactsLine(t){
+  const parts = [];
+  if(t.bpm) parts.push(`${Math.round(t.bpm)} BPM`);
+  if(t.key) parts.push(t.key);
+  if(t.energy) parts.push(`energy ${t.energy}`);
+  if(t.tags && t.tags.length) parts.push(t.tags.slice(0,5).join(", "));
+  if(t.is_vocal != null)
+    parts.push(t.is_vocal ? `ボーカルあり${t.lyrics_language ? " ("+t.lyrics_language+")" : ""}` : "インスト");
+  return parts.join(" ・ ");
 }
 
 function renderTimeline(){
@@ -918,6 +993,124 @@ $("dirSelect").onclick = () => {
     if(browseTarget === "cfPath") validatePath();
   }
   $("dirModal").hidden = true;
+};
+
+// --- BGM library modal ---------------------------------------------------
+
+let musicPollTimer = null;
+
+function openMusicLibrary(){
+  const prefill = (plan && plan.music && plan.music.path)
+    ? plan.music.path.replace(/[/\\][^/\\]+$/, "")
+    : (localStorage.getItem("aid_music_dir") || "");
+  $("mlPath").value = prefill;
+  $("mlInfo").textContent = "";
+  $("mlList").innerHTML = "";
+  $("musicModal").hidden = false;
+  if(prefill) loadMusicLib();
+}
+
+async function loadMusicLib(){
+  const path = $("mlPath").value.trim();
+  if(!path) return;
+  $("mlInfo").textContent = "読み込み中…";
+  try{
+    const res = await api(`/api/music/tracks?path=${encodeURIComponent(path)}`);
+    localStorage.setItem("aid_music_dir", res.path);
+    const list = $("mlList");
+    list.innerHTML = "";
+    if(!res.tracks.length){
+      list.innerHTML = '<div class="diritem">音楽ファイル(.mp3/.wav/.m4a)がありません</div>';
+    }
+    for(const t of res.tracks){
+      const row = document.createElement("div");
+      row.className = "mustrack";
+      const facts = t.analyzed ? musicFactsLine(t) : "";
+      row.innerHTML = `
+        <button class="small" data-k="pick">選択</button>
+        <div style="flex:1; min-width:0;">
+          <div>
+            <span class="mono">${escapeAttr(t.file_name)}</span>
+            ${ t.duration ? `<span class="fname mono"> ${fmt(t.duration)}s</span>` : "" }
+            <span class="mubadge ${t.analyzed ? "ok" : ""}">${t.analyzed ? "解析済み" : "未解析"}</span>
+          </div>
+          ${ facts ? `<div class="facts">${escapeAttr(facts)}</div>` : "" }
+          ${ t.description ? `<div class="desc2">${escapeAttr(t.description.slice(0,160))}</div>` : "" }
+        </div>`;
+      row.querySelector('[data-k="pick"]').onclick = () => pickLibraryTrack(t);
+      list.appendChild(row);
+    }
+    $("mlInfo").textContent =
+      `${res.tracks.length} 曲(解析済み ${res.analyzed_count})`;
+  }catch(e){
+    $("mlInfo").textContent = e.message;
+  }
+}
+
+function pickLibraryTrack(t){
+  if(!plan) return;
+  const prev = plan.music;
+  plan.music = {
+    path: t.path,
+    file_name: t.file_name,
+    duration: t.duration || null,
+    enabled: true,
+    gain_db: prev ? prev.gain_db : -18.0,
+    fade_in: prev ? prev.fade_in : 1.5,
+    fade_out: prev ? prev.fade_out : 3.0,
+    ducking: prev ? prev.ducking : true,
+    reason: "手動選択",
+    confidence: 1.0,
+  };
+  setDirty(true);
+  renderMusicCard();
+  $("musicModal").hidden = true;
+  note(`BGMを ${t.file_name} に変更しました(保存で確定)`);
+}
+
+async function startMusicAnalyze(){
+  const path = $("mlPath").value.trim();
+  if(!path) return;
+  try{
+    await api("/api/music/analyze", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({path}),
+    });
+  }catch(e){ $("mlInfo").textContent = e.message; return; }
+  $("mlAnalyze").disabled = true;
+  const poll = async () => {
+    try{
+      const st = await api("/api/music/analyze/status");
+      if(st.status === "running"){
+        $("mlInfo").textContent = "解析中… " + (st.log.length ? st.log[st.log.length-1] : "");
+        musicPollTimer = setTimeout(poll, 2000);
+        return;
+      }
+      $("mlAnalyze").disabled = false;
+      if(st.status === "failed"){
+        $("mlInfo").textContent = "解析失敗: " + (st.error || "");
+      }else{
+        $("mlInfo").textContent = "解析完了";
+        await loadMusicLib();
+        if(plan && plan.music) renderMusicCard();  // refresh facts line
+      }
+    }catch(e){
+      $("mlAnalyze").disabled = false;
+      $("mlInfo").textContent = e.message;
+    }
+  };
+  poll();
+}
+
+$("mlLoad").onclick = loadMusicLib;
+$("mlPath").onkeydown = e => { if(e.key === "Enter") loadMusicLib(); };
+$("mlAnalyze").onclick = startMusicAnalyze;
+$("mlClose").onclick = () => {
+  $("musicModal").hidden = true;
+  if(musicPollTimer) clearTimeout(musicPollTimer);
+};
+$("musicModal").onclick = e => {
+  if(e.target === $("musicModal")) $("mlClose").onclick();
 };
 
 $("exportSel").onchange = () => {

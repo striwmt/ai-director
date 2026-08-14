@@ -305,6 +305,59 @@ def test_music_roundtrip_via_save(client, populated, tmp_path):
     assert v4["music"] is None
 
 
+def test_music_library_listing(client, memory, music_dir, tmp_path):
+    from aidirector.memory.models import MusicTrackRecord
+    from aidirector.perception.music import music_track_id
+
+    # One analyzed row for calm_theme.wav; upbeat stays unanalyzed.
+    calm = music_dir / "calm_theme.wav"
+    memory.save_music_track(MusicTrackRecord(
+        id=music_track_id(calm), path=str(calm), file_name=calm.name,
+        duration=10.0,
+        features={"bpm": 90.0, "key": "A", "scale": "minor", "energy": "low"},
+        tags=[{"tag": "ambient", "category": "genre", "score": 0.4}],
+        lyrics={"language": "en", "is_vocal": False},
+        description="soft pads", analyzed_at="2026-08-15T00:00:00",
+    ))
+
+    res = client.get(f"/api/music/tracks?path={music_dir}")
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["analyzed_count"] == 1
+    by_name = {t["file_name"]: t for t in body["tracks"]}
+    assert set(by_name) == {"calm_theme.wav", "upbeat_energy.wav"}
+    analyzed = by_name["calm_theme.wav"]
+    assert analyzed["analyzed"] and analyzed["bpm"] == 90.0
+    assert analyzed["key"] == "A minor" and analyzed["tags"] == ["ambient"]
+    assert analyzed["is_vocal"] is False and analyzed["description"] == "soft pads"
+    assert by_name["upbeat_energy.wav"]["analyzed"] is False
+
+    assert client.get(f"/api/music/tracks?path={tmp_path}/nope").status_code == 422
+
+
+def test_music_analyze_job_flow(client, music_dir, monkeypatch):
+    import time
+
+    import aidirector.perception.music as music_mod
+
+    async def fake_analyze(music_dir_arg, config, memory, ai, progress=None):
+        return 2
+
+    monkeypatch.setattr(music_mod, "analyze_music_library", fake_analyze)
+    res = client.post("/api/music/analyze", json={"path": str(music_dir)})
+    assert res.status_code == 200, res.text
+    for _ in range(50):
+        st = client.get("/api/music/analyze/status").json()
+        if st["status"] in ("done", "failed"):
+            break
+        time.sleep(0.05)
+    assert st["status"] == "done", st
+
+    assert client.post(
+        "/api/music/analyze", json={"path": "/no/such/dir"}
+    ).status_code == 422
+
+
 def test_create_rejects_missing_music_dir(client, tmp_path):
     footage = tmp_path / "f"
     footage.mkdir()
