@@ -132,11 +132,17 @@ def edit(
         False, "--subtitles",
         help="Burn spoken-word subtitles (from the transcript) into clips",
     ),
+    music_dir: Optional[Path] = typer.Option(
+        None, "--music-dir",
+        help="Folder of BGM candidates (.mp3/.wav/.m4a); the AI picks one",
+    ),
     no_preview: bool = typer.Option(False, "--no-preview", help="Skip preview rendering"),
     config_file: Optional[Path] = typer.Option(None, "--config"),
     log_level: Optional[str] = typer.Option(None, "--log-level"),
 ) -> None:
     """Analyze footage (incrementally) and produce edit-plan.json + preview.mp4."""
+    if music_dir is not None and not music_dir.is_dir():
+        raise typer.BadParameter(f"--music-dir is not a directory: {music_dir}")
     config = _setup(config_file, log_level)
     memory = _open_memory(config)
     ai = _make_ai(config)
@@ -150,6 +156,7 @@ def edit(
                 prompt=prompt, duration=duration, profile=profile,
                 captions=captions, caption_format=caption_format,
                 subtitles=subtitles or None,
+                music_dir=music_dir,
                 canvas=canvas, color_override=_parse_override(color_profile),
                 render=not no_preview,
             )

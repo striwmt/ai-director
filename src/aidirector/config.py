@@ -132,6 +132,11 @@ class OutputConfig(BaseModel):
     caption_format: str = "{PLACE}\n{DATE} {TIME}"
     # Burn spoken-word subtitles (from the transcript) into clips.
     subtitles: bool = False
+    # Default BGM folder (.mp3/.wav/.m4a candidates); a per-run --music-dir
+    # or web-form path overrides it. None disables music selection.
+    music_dir: Path | None = None
+    # Default music bed level baked into new plans.
+    music_gain_db: float = -18.0
 
 
 class DirectorConfig(BaseModel):

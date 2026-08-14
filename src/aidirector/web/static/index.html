@@ -56,6 +56,9 @@
     background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:10px;
   }
   .clip img { width:128px; border-radius:4px; display:block; background:#000; }
+  .musicicon { width:128px; display:flex; align-items:center; justify-content:center;
+               font-size:40px; background:#14161b; border-radius:4px; min-height:72px; }
+  #musicCard:not(:empty) { margin-bottom:10px; }
   .clip .head { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
   .beat { font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; font-weight:700;
           padding:1px 7px; border-radius:3px; color:#14161b; background:var(--dusk); }
@@ -265,6 +268,15 @@
       <label for="cfProject">プロジェクト名</label>
       <input type="text" id="cfProject" placeholder="(省略時はフォルダ名)">
 
+      <label for="cfMusic">BGMフォルダ</label>
+      <div>
+        <div style="display:flex; gap:6px;">
+          <input type="text" id="cfMusic" style="flex:1"
+                 placeholder="(任意).mp3/.wav/.m4a からAIが選曲します">
+          <button id="musicBrowseBtn" type="button">参照…</button>
+        </div>
+      </div>
+
       <label for="cfPrompt">指示</label>
       <textarea id="cfPrompt" placeholder="例: 雨の町を静かに歩く旅行Vlog。電車で到着し、川沿いを歩き、古い寺を訪ねる"></textarea>
 
@@ -319,6 +331,7 @@
 <main>
   <section>
     <h2>タイムライン</h2>
+    <div id="musicCard"></div>
     <div id="timeline"></div>
   </section>
   <section>
@@ -453,7 +466,10 @@ async function loadProject(){
   sel.onchange = () => loadPlan(sel.value);
   loadMemory();
   if(plans.length) await loadPlan(plans[0].id);
-  else $("timeline").innerHTML = '<div class="empty">編集案がまだありません。</div>';
+  else {
+    $("musicCard").innerHTML = "";
+    $("timeline").innerHTML = '<div class="empty">編集案がまだありません。</div>';
+  }
 }
 
 async function loadPlan(id){
@@ -475,9 +491,57 @@ function totalDuration(){
   return plan.clips.reduce((a,c)=>a + (c.clip.source_out - c.clip.source_in), 0);
 }
 
+function renderMusicCard(){
+  const holder = $("musicCard");
+  holder.innerHTML = "";
+  const m = plan && plan.music;
+  if(!m) return;
+  const div = document.createElement("div");
+  div.className = "clip";
+  div.innerHTML = `
+    <div class="musicicon">🎵</div>
+    <div>
+      <div class="head">
+        <span class="beat b0">BGM</span>
+        <span class="fname mono">${escapeAttr(m.file_name || m.path)}</span>
+        ${ m.duration ? `<span class="fname mono">${fmt(m.duration)}s</span>` : "" }
+      </div>
+      <div class="desc">${escapeAttr(m.reason || "")}</div>
+      <div class="row">
+        <label style="display:flex; align-items:center; gap:5px;">
+          <input type="checkbox" data-k="mEnabled" ${m.enabled ? "checked" : ""}> 有効
+        </label>
+        <label>音量</label>
+        <input type="range" data-k="mGain" min="-30" max="0" step="1" value="${m.gain_db}">
+        <span class="mono" data-k="mGainVal">${m.gain_db} dB</span>
+        <label style="display:flex; align-items:center; gap:5px;"
+               title="本編の音声が鳴っている間はBGMを自動で下げます">
+          <input type="checkbox" data-k="mDuck" ${m.ducking ? "checked" : ""}> ダッキング
+        </label>
+        <button class="small" data-k="mDel">✕ 削除</button>
+      </div>
+    </div>`;
+  const q = k => div.querySelector(`[data-k="${k}"]`);
+  q("mEnabled").onchange = e => { m.enabled = e.target.checked; setDirty(true); };
+  q("mGain").oninput = e => {
+    m.gain_db = parseFloat(e.target.value);
+    q("mGainVal").textContent = `${m.gain_db} dB`;
+    setDirty(true);
+  };
+  q("mDuck").onchange = e => { m.ducking = e.target.checked; setDirty(true); };
+  q("mDel").onclick = () => {
+    if(!confirm("BGMをこの編集案から削除しますか?")) return;
+    plan.music = null;
+    setDirty(true);
+    renderMusicCard();
+  };
+  holder.appendChild(div);
+}
+
 function renderTimeline(){
   const tl = $("timeline");
   tl.innerHTML = "";
+  renderMusicCard();
   plan.clips.forEach((entry, i) => tl.appendChild(clipCard(entry, i)));
   const target = plan.intent.target_duration;
   const total = totalDuration();
@@ -752,7 +816,7 @@ async function loadMemory(){
 $("saveBtn").onclick = async () => {
   try{
     note("保存中…");
-    const body = { clips: plan.clips.map(c=>c.clip), feedback };
+    const body = { clips: plan.clips.map(c=>c.clip), music: plan.music, feedback };
     const res = await api(`/api/plans/${planId}/save`, {
       method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify(body),
@@ -806,7 +870,10 @@ async function loadDir(path){
     const res = await api(`/api/browse?path=${encodeURIComponent(path || "")}`);
     browsePath = res.path;
     $("dirPath").textContent = res.path;
-    $("dirInfo").textContent = res.video_count ? `このフォルダに動画 ${res.video_count} 本` : "";
+    const counts = [];
+    if(res.video_count) counts.push(`動画 ${res.video_count} 本`);
+    if(res.audio_count) counts.push(`音声 ${res.audio_count} 本`);
+    $("dirInfo").textContent = counts.length ? `このフォルダに ${counts.join("、")}` : "";
     const list = $("dirList");
     list.innerHTML = "";
     if(res.parent){
@@ -831,14 +898,25 @@ async function loadDir(path){
   }
 }
 
+let browseTarget = "cfPath";  // which input the modal fills
+
 $("browseBtn").onclick = () => {
+  browseTarget = "cfPath";
   $("dirModal").hidden = false;
   loadDir($("cfPath").value.trim());
+};
+$("musicBrowseBtn").onclick = () => {
+  browseTarget = "cfMusic";
+  $("dirModal").hidden = false;
+  loadDir($("cfMusic").value.trim());
 };
 $("dirCancel").onclick = () => { $("dirModal").hidden = true; };
 $("dirModal").onclick = e => { if(e.target === $("dirModal")) $("dirModal").hidden = true; };
 $("dirSelect").onclick = () => {
-  if(browsePath){ $("cfPath").value = browsePath; validatePath(); }
+  if(browsePath){
+    $(browseTarget).value = browsePath;
+    if(browseTarget === "cfPath") validatePath();
+  }
   $("dirModal").hidden = true;
 };
 
@@ -966,6 +1044,7 @@ async function startCreate(){
     captions: $("cfCaptions").value,
     caption_format: $("cfCaptions").value === "none" ? null : $("cfCapFmt").value,
     subtitles: $("cfSubtitles").checked,
+    music_path: $("cfMusic").value.trim() || null,
     canvas: $("cfCanvas").value,
   };
   if(!body.footage_path){ alert("素材パスを入力してください"); return; }

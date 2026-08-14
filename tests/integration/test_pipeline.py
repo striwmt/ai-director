@@ -84,3 +84,38 @@ async def test_full_pipeline(footage_dir, config, memory, mock_ai):
     assert timeline.clips[0].proxy_path is not None
     output = render_preview(timeline, config)
     assert output.is_file() and output.stat().st_size > 10_000
+
+
+async def test_full_pipeline_with_music(footage_dir, music_dir, config, memory, mock_ai):
+    from aidirector.media.probe import probe_file
+
+    project_id = await run_analyze(
+        footage_dir, config, memory, mock_ai, PROJECT_ROOT
+    )
+    plan_id, plan = await run_director(
+        project_id, config, memory, mock_ai,
+        user_prompt="a calm walk", target_duration=10.0,
+        profile_name="travel_vlog", music_dir=music_dir,
+    )
+    assert plan.music is not None, "AI picked a track"
+    assert plan.music.file_name == "calm_theme.wav"
+    assert plan.music.reason and plan.music.duration
+    assert Path(plan.music.path).is_file()
+    validate_edit_plan(plan, memory)
+    assert json.loads(memory.get_edit_plan(plan_id))["music"]["file_name"] == (
+        "calm_theme.wav"
+    )
+
+    # Music is mixed into the preview; duration stays that of the program.
+    timeline = compile_timeline(plan, memory)
+    output = render_preview(timeline, config)
+    info = probe_file(output)
+    assert info.audio_streams, "preview has an audio stream"
+    assert info.duration == pytest.approx(timeline.duration, abs=0.5)
+
+    # Disabled music falls back to the plain render path.
+    timeline.music.enabled = False
+    output2 = render_preview(
+        timeline, config, config.paths.renders_dir / "no_music.mp4"
+    )
+    assert output2.is_file() and output2.stat().st_size > 10_000

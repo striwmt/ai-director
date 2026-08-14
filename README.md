@@ -91,6 +91,10 @@ Launching opens an app window (closing the window quits the app).
    - **Captions** — time & place shown at scene changes (format
      configurable, e.g. `{HH}:{MM} {PLACE}`)
    - **Spoken-word subtitles** — transcribed speech burned in as subtitles
+   - **BGM** — point **BGMフォルダ** at a folder of music files
+     (`.mp3/.wav/.m4a`); the AI picks the track that fits the story and
+     mixes it in with fades and **automatic ducking** (music dips while
+     people talk). CLI: `--music-dir`
 6. Hit **作成開始 (Create)** and watch the phase-by-phase progress
 
 The first pass over new footage takes a while (the AI actually watches and
@@ -106,6 +110,8 @@ The draft appears as a timeline; every cut shows **why the AI chose it**.
   (edges = in/out, grab the middle to slide)
 - **Remove** with ✕
 - **Edit captions and subtitles** in place
+- **Tune the BGM** on its card above the timeline — volume, ducking
+  on/off, or remove it entirely
 - **Add cuts** from the Media Memory panel — everything the AI understood
   about your footage, one click to append
 
@@ -125,6 +131,11 @@ aidirector export latest --format srt      # subtitle file
 ```
 
 Captions and subtitles carry over as editable titles (FCPXML) and SRT.
+BGM carries over too, referencing your original music file with the
+volume applied (FCPXML connected clip / OTIO audio track). Fades and
+ducking are preview-only — recreate them in your NLE if you need them.
+Note: if the track is shorter than the timeline it loops in the preview,
+but NLEs can't loop a clip, so the exported track simply ends there.
 
 ## Where your data lives
 

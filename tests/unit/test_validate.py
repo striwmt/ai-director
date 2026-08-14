@@ -52,3 +52,44 @@ def test_out_of_asset_bounds_fails(populated):
 def test_empty_plan_fails(populated):
     with pytest.raises(ValidationError, match="no clips"):
         validate_edit_plan(plan_with([]), populated)
+
+
+def _plan_with_music(music):
+    plan = plan_with([EditClip(segment_id="seg_ok", source_in=1.0, source_out=5.0)])
+    plan.music = music
+    return plan
+
+
+def test_music_missing_file_fails(populated):
+    from aidirector.director.schemas import PlanMusic
+
+    music = PlanMusic(path="/nope/gone.mp3", file_name="gone.mp3")
+    with pytest.raises(ValidationError, match="file not found"):
+        validate_edit_plan(_plan_with_music(music), populated)
+
+
+def test_music_disabled_missing_file_passes(populated):
+    from aidirector.director.schemas import PlanMusic
+
+    music = PlanMusic(path="/nope/gone.mp3", file_name="gone.mp3", enabled=False)
+    assert validate_edit_plan(_plan_with_music(music), populated) == []
+
+
+def test_music_implausible_gain_fails(populated, tmp_path):
+    from aidirector.director.schemas import PlanMusic
+
+    track = tmp_path / "ok.wav"
+    track.write_bytes(b"RIFF")
+    music = PlanMusic(path=str(track), file_name="ok.wav", gain_db=40.0)
+    with pytest.raises(ValidationError, match="implausible gain"):
+        validate_edit_plan(_plan_with_music(music), populated)
+
+
+def test_music_bad_extension_fails(populated, tmp_path):
+    from aidirector.director.schemas import PlanMusic
+
+    track = tmp_path / "movie.mp4"
+    track.write_bytes(b"\x00")
+    music = PlanMusic(path=str(track), file_name="movie.mp4")
+    with pytest.raises(ValidationError, match="unsupported file type"):
+        validate_edit_plan(_plan_with_music(music), populated)

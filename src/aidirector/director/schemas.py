@@ -91,6 +91,34 @@ class Critique(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Music Selector — the AI picks a BGM track from a local folder; code
+# guarantees the pick actually exists (resolve step) and mixes it.
+
+
+class MusicChoice(BaseModel):
+    """LLM response: one filename from the offered list, or null."""
+
+    file_name: str | None = None
+    reason: str = ""
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
+class PlanMusic(BaseModel):
+    """BGM track persisted in the Edit Plan (user-editable, re-renderable)."""
+
+    path: str                      # absolute path to the chosen track
+    file_name: str = ""
+    duration: float | None = None  # probed at selection time
+    enabled: bool = True
+    gain_db: float = -18.0
+    fade_in: float = Field(default=1.5, ge=0.0, le=15.0)
+    fade_out: float = Field(default=3.0, ge=0.0, le=15.0)
+    ducking: bool = True
+    reason: str = ""
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
+# ---------------------------------------------------------------------------
 # Edit Plan (§54/§55) — JSON-serializable, versioned, user-editable.
 
 
@@ -159,6 +187,7 @@ class EditPlan(BaseModel):
     intent: EditPlanIntent
     story: EditPlanStory = EditPlanStory()
     clips: list[EditClip] = Field(default_factory=list)
+    music: PlanMusic | None = None
 
     @property
     def total_duration(self) -> float:

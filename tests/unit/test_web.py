@@ -224,10 +224,13 @@ def test_browse(client, tmp_path):
     (tmp_path / "trip" / ".hidden").mkdir()
     (tmp_path / "trip" / "clip.MP4").write_bytes(b"")
 
+    (tmp_path / "trip" / "theme.mp3").write_bytes(b"")
+
     res = client.get(f"/api/browse?path={tmp_path}/trip").json()
     assert res["path"].endswith("/trip")
     assert [d["name"] for d in res["dirs"]] == ["day1", "day2"]
     assert res["video_count"] == 1
+    assert res["audio_count"] == 1
     assert res["parent"] == str(tmp_path)
 
     assert client.get(f"/api/browse?path={tmp_path}/nope").status_code == 404
@@ -263,6 +266,53 @@ def test_rename_project_and_plan(client, populated):
 
     assert client.patch("/api/projects/prj_nope", json={"name": "x"}).status_code == 404
     assert client.patch("/api/plans/plan_nope", json={"name": "x"}).status_code == 404
+
+
+def test_music_roundtrip_via_save(client, populated, tmp_path):
+    track = tmp_path / "calm.wav"
+    track.write_bytes(b"RIFF")
+
+    plan = client.get(f"/api/plans/{populated['plan_id']}").json()
+    assert plan["music"] is None
+    clips = [c["clip"] for c in plan["clips"]]
+
+    # attach music
+    music = {"path": str(track), "file_name": "calm.wav",
+             "gain_db": -20.0, "reason": "test pick"}
+    res = client.post(
+        f"/api/plans/{populated['plan_id']}/save",
+        json={"clips": clips, "music": music},
+    )
+    assert res.status_code == 200, res.text
+    v2_id = res.json()["plan_id"]
+    v2 = client.get(f"/api/plans/{v2_id}").json()
+    assert v2["music"]["file_name"] == "calm.wav"
+    assert v2["music"]["gain_db"] == -20.0
+    assert v2["music"]["enabled"] is True
+
+    # omitting music preserves it (old clients must not drop the track)
+    res = client.post(f"/api/plans/{v2_id}/save", json={"clips": clips})
+    assert res.status_code == 200, res.text
+    v3 = client.get(f"/api/plans/{res.json()['plan_id']}").json()
+    assert v3["music"]["file_name"] == "calm.wav"
+
+    # explicit null removes it
+    res = client.post(
+        f"/api/plans/{v2_id}/save", json={"clips": clips, "music": None}
+    )
+    assert res.status_code == 200, res.text
+    v4 = client.get(f"/api/plans/{res.json()['plan_id']}").json()
+    assert v4["music"] is None
+
+
+def test_create_rejects_missing_music_dir(client, tmp_path):
+    footage = tmp_path / "f"
+    footage.mkdir()
+    res = client.post("/api/create", json={
+        "footage_path": str(footage), "prompt": "x",
+        "music_path": str(tmp_path / "no_such_music"),
+    })
+    assert res.status_code == 422
 
 
 def test_create_accepts_project_name(client, tmp_path, monkeypatch):

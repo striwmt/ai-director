@@ -10,7 +10,9 @@ import tempfile
 from pathlib import Path
 
 from ..config import AppConfig
+from ..director.schemas import PlanMusic
 from ..logging import get_logger
+from ..media.probe import probe_file
 from ..process import run_command
 from .captions import build_caption_overlay, build_subtitle_overlays
 from .model import Timeline
@@ -20,6 +22,13 @@ log = get_logger("timeline.preview")
 _PREVIEW_LONG_EDGE = 1280
 _PREVIEW_FPS = 30
 _AUDIO_RATE = 48000
+
+# Ducking (sidechaincompress keyed by the program audio). threshold is
+# linear amplitude (0.05 ≈ -26 dBFS); slow attack/release avoids pumping.
+_DUCK_THRESHOLD = 0.05
+_DUCK_RATIO = 8.0
+_DUCK_ATTACK_MS = 200
+_DUCK_RELEASE_MS = 1000
 
 
 def _preview_canvas(timeline: Timeline) -> tuple[int, int]:
@@ -156,6 +165,16 @@ def render_preview(
                 run_command(command_noaudio, timeout=600.0)
             parts.append(part)
 
+        music = timeline.music
+        want_music = (
+            music is not None
+            and music.enabled
+            and Path(music.path).is_file()
+        )
+        if music is not None and music.enabled and not want_music:
+            log.warning("music file missing, rendering without BGM: %s", music.path)
+        concat_target = tmp_dir / "program.mp4" if want_music else output
+
         concat_list = tmp_dir / "concat.txt"
         concat_list.write_text(
             "".join(f"file '{p}'\n" for p in parts), encoding="utf-8"
@@ -166,10 +185,70 @@ def render_preview(
                 "-f", "concat", "-safe", "0",
                 "-i", str(concat_list),
                 "-c", "copy",
-                str(output),
+                str(concat_target),
             ],
             timeout=600.0,
         )
+        if want_music:
+            assert music is not None
+            _mix_music(concat_target, music, output)
+            log.info("music mixed: %s (gain %.1f dB, ducking=%s)",
+                     music.file_name, music.gain_db, music.ducking)
 
     log.info("preview rendered: %s (%.1fs, %d clips)", output, timeline.duration, len(timeline.clips))
     return output
+
+
+def _mix_music(program: Path, music: PlanMusic, output: Path) -> None:
+    """Second pass: loop/trim the BGM to the program length and mix it in.
+
+    The music is faded in/out and, when ducking is on, compressed with the
+    program audio as the sidechain key so speech and ambience stay in front.
+    The video stream is copied untouched.
+    """
+    duration = probe_file(program).duration
+    if not duration or duration <= 0:
+        raise ValueError(f"cannot probe program duration: {program}")
+    gain = 10 ** (music.gain_db / 20.0)
+    fade_out_start = max(0.0, duration - music.fade_out)
+
+    music_chain = (
+        f"[1:a]aformat=sample_rates={_AUDIO_RATE}:channel_layouts=stereo,"
+        f"atrim=0:{duration:.3f},asetpts=PTS-STARTPTS,"
+        f"volume={gain:.4f},"
+        f"afade=t=in:st=0:d={music.fade_in:.3f},"
+        f"afade=t=out:st={fade_out_start:.3f}:d={music.fade_out:.3f}[music]"
+    )
+    # amix normalize=0: keep explicit levels instead of the default halving.
+    if music.ducking:
+        graph = (
+            f"{music_chain};"
+            f"[0:a]asplit=2[voice][sc];"
+            # sidechaincompress: first input is compressed, second is the key
+            f"[music][sc]sidechaincompress=threshold={_DUCK_THRESHOLD}:"
+            f"ratio={_DUCK_RATIO}:attack={_DUCK_ATTACK_MS}:"
+            f"release={_DUCK_RELEASE_MS}[ducked];"
+            f"[voice][ducked]amix=inputs=2:duration=first:"
+            f"dropout_transition=0:normalize=0[aout]"
+        )
+    else:
+        graph = (
+            f"{music_chain};"
+            f"[0:a][music]amix=inputs=2:duration=first:"
+            f"dropout_transition=0:normalize=0[aout]"
+        )
+
+    run_command(
+        [
+            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            "-i", str(program),
+            # loop the track; atrim and -t bound it deterministically
+            "-stream_loop", "-1", "-i", str(music.path),
+            "-filter_complex", graph,
+            "-map", "0:v", "-map", "[aout]",
+            "-c:v", "copy", "-c:a", "aac", "-b:a", "160k",
+            "-t", f"{duration:.3f}",
+            str(output),
+        ],
+        timeout=600.0,
+    )

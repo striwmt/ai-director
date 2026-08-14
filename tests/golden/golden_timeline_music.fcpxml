@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE fcpxml>
+<fcpxml version="1.10">
+  <resources>
+    <format id="r1" name="FFVideoFormat_30000/1001" frameDuration="1001/30000s" width="1920" height="1080" />
+    <asset id="r2" name="DJI_0042.MP4" start="0s" hasVideo="1" hasAudio="1" format="r1">
+      <media-rep kind="original-media" src="file:///footage/DJI_0042.MP4" />
+    </asset>
+    <asset id="r3" name="DJI_0043.MP4" start="0s" hasVideo="1" hasAudio="1" format="r1">
+      <media-rep kind="original-media" src="file:///footage/DJI_0043.MP4" />
+    </asset>
+    <effect id="r4" name="Basic Title" uid=".../Titles.localized/Bumper:Opener.localized/Basic Title.localized/Basic Title.moti" />
+    <asset id="r5" name="calm_theme.wav" start="0s" hasVideo="0" hasAudio="1" duration="3599596/30000s">
+      <media-rep kind="original-media" src="file:///music/calm_theme.wav" />
+    </asset>
+  </resources>
+  <library>
+    <event name="AI Director">
+      <project name="Golden Timeline">
+        <sequence format="r1" duration="276276/30000s" tcStart="0s">
+          <spine>
+            <asset-clip ref="r2" name="DJI_0042" offset="0/30000s" start="372372/30000s" duration="141141/30000s" format="r1">
+              <title ref="r4" name="佐原" lane="1" offset="372372/30000s" duration="90090/30000s">
+                <text>
+                  <text-style ref="ts0">佐原
+2026-08-01 09:30</text-style>
+                </text>
+                <text-style-def id="ts0">
+                  <text-style font="Helvetica" fontSize="60" fontColor="1 1 1 1" alignment="center" />
+                </text-style-def>
+              </title>
+              <note>[opening] rain and townscape together</note>
+              <asset-clip ref="r5" name="calm_theme.wav" lane="-1" offset="372372/30000s" start="0s" duration="276276/30000s" audioRole="music">
+                <adjust-volume amount="-18dB" />
+                <note>[BGM] matches the calm tone (fade/ducking applied in preview only)</note>
+              </asset-clip>
+            </asset-clip>
+            <asset-clip ref="r3" name="DJI_0043" offset="141141/30000s" start="60060/30000s" duration="135135/30000s" format="r1">
+              <note>[exploration] entering the shop</note>
+            </asset-clip>
+          </spine>
+        </sequence>
+      </project>
+    </event>
+  </library>
+</fcpxml>

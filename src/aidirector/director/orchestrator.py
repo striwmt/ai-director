@@ -9,6 +9,7 @@ Never a single giant prompt; each stage is structured and validated.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from ..ai.services import AIServices
 from ..config import AppConfig
@@ -19,6 +20,7 @@ from ..perception.interpretation import SegmentUnderstanding, build_understandin
 from .beat_planner import plan_beats
 from .critic import critique_edit
 from .editor import describe_selection, edit_sequence, enforce_target_duration
+from .music import list_music_tracks, resolve_choice, select_music
 from .profile import DirectorProfile, load_director_profile
 from .prompts import PROMPT_VERSION
 from .schemas import (
@@ -208,6 +210,7 @@ async def run_director(
     captions: str | None = None,
     caption_format: str | None = None,
     subtitles: bool | None = None,
+    music_dir: Path | None = None,
 ) -> tuple[str, EditPlan]:
     """Run the full director pipeline. Returns (plan_id, edit_plan)."""
     profile_name = profile_name or config.director.default_profile
@@ -347,6 +350,32 @@ async def run_director(
         want_subtitles = subtitles if subtitles is not None else config.output.subtitles
         if want_subtitles:
             plan = fill_subtitles(plan, memory)
+
+        # Music selection (optional; the plan is complete without it)
+        effective_music_dir = (
+            music_dir if music_dir is not None else config.output.music_dir
+        )
+        if effective_music_dir is not None:
+            tracks = list_music_tracks(Path(effective_music_dir))
+            if tracks:
+                try:
+                    choice = await select_music(
+                        ai, story=story, user_prompt=user_prompt,
+                        target_duration=target_duration, tracks=tracks,
+                    )
+                    plan.music = resolve_choice(
+                        choice, tracks,
+                        default_gain_db=config.output.music_gain_db,
+                    )
+                    if plan.music is not None:
+                        log.info(
+                            "music: %s (%s)", plan.music.file_name, plan.music.reason
+                        )
+                except Exception as exc:
+                    log.warning("music selection skipped: %s", exc)
+            else:
+                log.info("music: no candidate files in %s", effective_music_dir)
+
         plan_id = memory.save_edit_plan(
             run_id, plan.model_dump_json(), version=1,
             name=(story.concept or user_prompt or "").strip()[:60] or None,

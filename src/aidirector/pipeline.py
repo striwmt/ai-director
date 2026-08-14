@@ -232,6 +232,7 @@ async def run_full_edit(
     captions: str | None = None,
     caption_format: str | None = None,
     subtitles: bool | None = None,
+    music_dir: Path | None = None,
     canvas: str | None = None,
     color_override: ColorProfile | None = None,
     project_name: str | None = None,
@@ -263,6 +264,7 @@ async def run_full_edit(
         project_id, config, memory, ai,
         user_prompt=prompt, target_duration=duration, profile_name=profile,
         captions=captions, caption_format=caption_format, subtitles=subtitles,
+        music_dir=music_dir,
     )
     await ai.runtime.release_all()
 

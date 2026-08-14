@@ -105,4 +105,5 @@ def compile_timeline(
         width=width,
         height=height,
         clips=clips,
+        music=plan.music,
     )

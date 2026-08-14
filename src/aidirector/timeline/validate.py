@@ -7,7 +7,9 @@ ValidationError with every problem listed.
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
+from ..director.music import MUSIC_EXTENSIONS
 from ..director.schemas import EditPlan
 from ..errors import ValidationError
 from ..memory.repository import MediaMemory
@@ -63,6 +65,17 @@ def validate_edit_plan(plan: EditPlan, memory: MediaMemory) -> list[str]:
                 problems.append(f"{label}: subtitle {line_no} text too long")
         if not math.isfinite(clip.audio.gain_db) or abs(clip.audio.gain_db) > 30:
             problems.append(f"{label}: implausible audio gain {clip.audio.gain_db}")
+
+    if plan.music is not None:
+        music = plan.music
+        if Path(music.path).suffix.lower() not in MUSIC_EXTENSIONS:
+            problems.append(f"music: unsupported file type: {music.path}")
+        if music.enabled and not Path(music.path).is_file():
+            problems.append(f"music: file not found: {music.path}")
+        if not math.isfinite(music.gain_db) or abs(music.gain_db) > 30:
+            problems.append(f"music: implausible gain {music.gain_db}")
+        if not (math.isfinite(music.fade_in) and math.isfinite(music.fade_out)):
+            problems.append("music: non-finite fade times")
 
     total = plan.total_duration
     if plan.clips and not math.isfinite(total):

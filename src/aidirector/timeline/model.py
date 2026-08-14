@@ -12,7 +12,13 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from ..director.schemas import ClipAudio, ClipCaption, ClipTransition, SubtitleLine
+from ..director.schemas import (
+    ClipAudio,
+    ClipCaption,
+    ClipTransition,
+    PlanMusic,
+    SubtitleLine,
+)
 
 
 class TimelineClip(BaseModel):
@@ -50,6 +56,8 @@ class Timeline(BaseModel):
     width: int = 1920
     height: int = 1080
     clips: list[TimelineClip] = Field(default_factory=list)
+    # BGM track (references the original music file; mixed at render time)
+    music: PlanMusic | None = None
 
     @property
     def duration(self) -> float:

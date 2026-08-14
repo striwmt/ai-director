@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from ...config import AppConfig
-from ...director.schemas import EditClip, EditPlan
+from ...director.schemas import EditClip, EditPlan, PlanMusic
 from ...errors import ValidationError
 from ...logging import get_logger
 from ...memory.database import connect
@@ -191,6 +191,7 @@ def get_plan(plan_id: str, memory: MediaMemory = Depends(get_memory)) -> dict:
         "story": plan.story.model_dump(),
         "version": plan.version,
         "clips": clips,
+        "music": plan.music.model_dump() if plan.music else None,
         "render": jobs.status(plan_id),
     }
 
@@ -276,6 +277,8 @@ class FeedbackItem(BaseModel):
 
 class SavePlanRequest(BaseModel):
     clips: list[EditClip] = Field(min_length=1)
+    # Omitted -> keep the plan's current music; explicit null -> remove it.
+    music: PlanMusic | None = None
     feedback: list[FeedbackItem] = Field(default_factory=list)
 
 
@@ -290,11 +293,13 @@ def save_plan(
         raise HTTPException(404, f"plan not found: {plan_id}")
     source = EditPlan.model_validate_json(source_json)
 
+    music = body.music if "music" in body.model_fields_set else source.music
     new_plan = EditPlan(
         version=source.version + 1,
         intent=source.intent,
         story=source.story,
         clips=body.clips,
+        music=music,
     )
     try:
         validate_edit_plan(new_plan, memory)
@@ -386,8 +391,10 @@ def browse_directories(
     # Non-recursive on purpose: browsing must stay instant even in huge
     # trees (recursive counting is validate_footage's job on the final pick).
     video_extensions = set(config.ingest.video_extensions)
+    audio_extensions = set(config.ingest.audio_extensions)
     subdirs = []
     video_count = 0
+    audio_count = 0
     try:
         for entry in sorted(directory.iterdir(), key=lambda p: p.name.lower()):
             if entry.name.startswith("."):
@@ -396,6 +403,8 @@ def browse_directories(
                 subdirs.append({"name": entry.name, "path": str(entry)})
             elif entry.suffix.lower() in video_extensions:
                 video_count += 1
+            elif entry.suffix.lower() in audio_extensions:
+                audio_count += 1
     except PermissionError:
         raise HTTPException(403, f"permission denied: {directory}")
     parent = str(directory.parent) if directory.parent != directory else None
@@ -404,6 +413,7 @@ def browse_directories(
         "parent": parent,
         "dirs": subdirs[:500],
         "video_count": video_count,
+        "audio_count": audio_count,
     }
 
 
@@ -456,6 +466,7 @@ class CreateRequest(BaseModel):
     captions: str = "none"
     caption_format: str | None = None
     subtitles: bool = False
+    music_path: str | None = None
     canvas: str | None = None
 
 
@@ -467,6 +478,11 @@ def start_create(
     footage = Path(body.footage_path).expanduser()
     if not footage.is_dir():
         raise HTTPException(422, f"素材ディレクトリが見つかりません: {footage}")
+    music_dir: Path | None = None
+    if body.music_path and body.music_path.strip():
+        music_dir = Path(body.music_path.strip()).expanduser()
+        if not music_dir.is_dir():
+            raise HTTPException(422, f"BGMディレクトリが見つかりません: {music_dir}")
 
     def work(progress) -> str:
         import asyncio
@@ -485,7 +501,8 @@ def start_create(
                     prompt=body.prompt, duration=body.duration,
                     profile=body.profile, captions=body.captions,
                     caption_format=body.caption_format,
-                    subtitles=body.subtitles or None, canvas=body.canvas,
+                    subtitles=body.subtitles or None, music_dir=music_dir,
+                    canvas=body.canvas,
                     project_name=(body.project_name or "").strip() or None,
                     progress=progress,
                 )

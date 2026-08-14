@@ -47,6 +47,26 @@ def test_edit_plan_roundtrip():
     assert reloaded.clips[1].audio.mode == "muted"
 
 
+def test_edit_plan_music_roundtrip():
+    from aidirector.director.schemas import PlanMusic
+
+    plan = EditPlan(
+        intent=EditPlanIntent(target_duration=60),
+        clips=[EditClip(segment_id="seg_1", source_in=0.0, source_out=5.0)],
+        music=PlanMusic(path="/music/calm.wav", file_name="calm.wav",
+                        duration=120.0, reason="calm mood"),
+    )
+    data = json.loads(plan.model_dump_json())
+    reloaded = EditPlan.model_validate(data)
+    assert reloaded.music is not None
+    assert reloaded.music.gain_db == -18.0 and reloaded.music.ducking
+
+    # Plans saved before the music field existed must still load.
+    del data["music"]
+    legacy = EditPlan.model_validate(data)
+    assert legacy.music is None
+
+
 def test_edit_plan_rejects_bad_values():
     with pytest.raises(ValidationError):
         EditClip(segment_id="s", source_in=-1.0, source_out=2.0)

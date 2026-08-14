@@ -5,7 +5,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from aidirector.director.schemas import ClipAudio, ClipCaption, ClipTransition
+from aidirector.director.schemas import (
+    ClipAudio,
+    ClipCaption,
+    ClipTransition,
+    PlanMusic,
+)
 from aidirector.timeline.edl import timeline_to_edl
 from aidirector.timeline.fcpxml import timeline_to_fcpxml
 from aidirector.timeline.model import Timeline, TimelineClip
@@ -45,6 +50,18 @@ def fixed_timeline() -> Timeline:
             ),
         ],
     )
+
+
+def fixed_timeline_with_music() -> Timeline:
+    timeline = fixed_timeline()
+    timeline.music = PlanMusic(
+        path="/music/calm_theme.wav",
+        file_name="calm_theme.wav",
+        duration=120.0,
+        gain_db=-18.0,
+        reason="matches the calm tone",
+    )
+    return timeline
 
 
 def _check_golden(name: str, actual: str) -> None:
@@ -103,3 +120,57 @@ def test_captions_carried_into_exports():
     assert first["markers"][0]["name"].startswith("CAPTION: 佐原")
     second = otio["tracks"]["children"][0]["children"][1]
     assert second["markers"] == []
+
+
+def test_music_golden_fcpxml():
+    _check_golden(
+        "golden_timeline_music.fcpxml",
+        timeline_to_fcpxml(fixed_timeline_with_music()),
+    )
+
+
+def test_music_golden_edl():
+    _check_golden(
+        "golden_timeline_music.edl", timeline_to_edl(fixed_timeline_with_music())
+    )
+
+
+def test_music_golden_otio():
+    actual = json.dumps(
+        timeline_to_otio(fixed_timeline_with_music()), indent=2, ensure_ascii=False
+    )
+    _check_golden("golden_timeline_music.otio", actual)
+
+
+def test_music_carried_into_exports():
+    timeline = fixed_timeline_with_music()
+
+    xml = timeline_to_fcpxml(timeline)
+    # Connected clip referencing the ORIGINAL music file, with the bed
+    # level applied as an editable volume adjustment.
+    assert 'lane="-1"' in xml and 'audioRole="music"' in xml
+    assert "calm_theme.wav" in xml
+    assert '<adjust-volume amount="-18dB"' in xml
+    assert 'hasVideo="0"' in xml and 'hasAudio="1"' in xml
+
+    otio = timeline_to_otio(timeline)
+    tracks = otio["tracks"]["children"]
+    assert len(tracks) == 2
+    audio_track = tracks[1]
+    assert audio_track["kind"] == "Audio"
+    music_clip = audio_track["children"][0]
+    meta = music_clip["metadata"]["aidirector"]
+    assert meta["role"] == "music" and meta["gain_db"] == -18.0
+    assert music_clip["media_reference"]["target_url"].endswith("calm_theme.wav")
+
+    edl = timeline_to_edl(timeline)
+    assert "* BGM CLIP NAME: calm_theme.wav" in edl
+    assert "* BGM GAIN: -18 DB" in edl
+
+
+def test_disabled_music_omitted_from_exports():
+    timeline = fixed_timeline_with_music()
+    timeline.music.enabled = False
+    assert "calm_theme" not in timeline_to_fcpxml(timeline)
+    assert "BGM" not in timeline_to_edl(timeline)
+    assert len(timeline_to_otio(timeline)["tracks"]["children"]) == 1

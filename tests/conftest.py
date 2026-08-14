@@ -64,6 +64,7 @@ class MockDirectorProvider:
             BeatSelection,
             ClipChoice,
             Critique,
+            MusicChoice,
             SequenceClip,
             SequencePlan,
             StoryPlan,
@@ -140,6 +141,13 @@ class MockDirectorProvider:
             return SequencePlan(clips=clips)
         if response_model is Critique:
             return Critique(score=85, issues=[], revision_required=False)
+        if response_model is MusicChoice:
+            first = re.search(r"- (\S+\.(?:mp3|wav|m4a))", prompt)
+            return MusicChoice(
+                file_name=first.group(1) if first else None,
+                reason="matches the calm tone",
+                confidence=0.9,
+            )
         raise AssertionError(f"unexpected schema: {response_model}")
 
 
@@ -246,4 +254,19 @@ def footage_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
     concat.unlink()
     # DJI-style LRF sidecar (low-res twin, ignored as primary footage)
     (root / "DJI_0001.LRF").write_bytes(b"\x00" * 128)
+    return root
+
+
+@pytest.fixture(scope="session")
+def music_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    root = tmp_path_factory.mktemp("music")
+    _ffmpeg([
+        "-f", "lavfi", "-i", "sine=frequency=220:duration=10",
+        "-c:a", "pcm_s16le", str(root / "calm_theme.wav"),
+    ])
+    _ffmpeg([
+        "-f", "lavfi", "-i", "sine=frequency=660:duration=6",
+        "-c:a", "pcm_s16le", str(root / "upbeat_energy.wav"),
+    ])
+    (root / "notes.txt").write_text("not music")
     return root

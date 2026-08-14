@@ -65,20 +65,63 @@ def timeline_to_otio(timeline: Timeline) -> dict:
                 "metadata": {"aidirector": metadata},
             }
         )
+    children = [
+        {
+            "OTIO_SCHEMA": "Track.1",
+            "name": "V1",
+            "kind": "Video",
+            "children": clips,
+        }
+    ]
+
+    # BGM: an audio track referencing the ORIGINAL music file. OTIO has no
+    # standard volume effect, so the mix parameters travel as metadata.
+    music = timeline.music
+    if music is not None and music.enabled:
+        music_len = timeline.duration
+        if music.duration:
+            music_len = min(music.duration, timeline.duration)
+        children.append(
+            {
+                "OTIO_SCHEMA": "Track.1",
+                "name": "A1 Music",
+                "kind": "Audio",
+                "children": [
+                    {
+                        "OTIO_SCHEMA": "Clip.2",
+                        "name": music.file_name or Path(music.path).stem,
+                        "source_range": {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "start_time": _rational_time(0.0, rate),
+                            "duration": _rational_time(music_len, rate),
+                        },
+                        "media_reference": {
+                            "OTIO_SCHEMA": "ExternalReference.1",
+                            "target_url": Path(music.path).resolve().as_uri(),
+                        },
+                        "markers": [],
+                        "metadata": {
+                            "aidirector": {
+                                "role": "music",
+                                "gain_db": music.gain_db,
+                                "fade_in": music.fade_in,
+                                "fade_out": music.fade_out,
+                                "ducking": music.ducking,
+                                "reason": music.reason,
+                            }
+                        },
+                    }
+                ],
+            }
+        )
+
     return {
         "OTIO_SCHEMA": "Timeline.1",
         "name": timeline.name,
         "tracks": {
             "OTIO_SCHEMA": "Stack.1",
             "name": "tracks",
-            "children": [
-                {
-                    "OTIO_SCHEMA": "Track.1",
-                    "name": "V1",
-                    "kind": "Video",
-                    "children": clips,
-                }
-            ],
+            "children": children,
         },
     }
 

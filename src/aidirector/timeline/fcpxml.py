@@ -41,9 +41,16 @@ def timeline_to_fcpxml(timeline: Timeline) -> str:
     root = ET.Element("fcpxml", version="1.10")
     resources = ET.SubElement(root, "resources")
 
+    # Sequential resource-id allocator (r1, r2, ...) shared by every
+    # resource kind so ids can never collide.
+    id_counter = iter(range(1, 1_000_000))
+
+    def next_id() -> str:
+        return f"r{next(id_counter)}"
+
     fmt = ET.SubElement(
         resources, "format",
-        id="r1", name=f"FFVideoFormat_{rate}", frameDuration=frame_duration,
+        id=next_id(), name=f"FFVideoFormat_{rate}", frameDuration=frame_duration,
         width=str(timeline.width), height=str(timeline.height),
     )
     del fmt
@@ -51,7 +58,7 @@ def timeline_to_fcpxml(timeline: Timeline) -> str:
     asset_ids: dict[str, str] = {}
     for clip in timeline.clips:
         if clip.original_path not in asset_ids:
-            asset_id = f"r{len(asset_ids) + 2}"
+            asset_id = next_id()
             asset_ids[clip.original_path] = asset_id
             asset = ET.SubElement(
                 resources, "asset",
@@ -72,12 +79,33 @@ def timeline_to_fcpxml(timeline: Timeline) -> str:
     # preview look is a draft; final typography belongs to the human editor.
     title_effect_id: str | None = None
     if any(c.caption is not None or c.subtitles for c in timeline.clips):
-        title_effect_id = f"r{len(asset_ids) + 2}"
+        title_effect_id = next_id()
         ET.SubElement(
             resources, "effect",
             id=title_effect_id,
             name="Basic Title",
             uid=".../Titles.localized/Bumper:Opener.localized/Basic Title.localized/Basic Title.moti",
+        )
+
+    # BGM references the ORIGINAL music file, like camera media (§58).
+    music = timeline.music
+    music_asset_id: str | None = None
+    if music is not None and music.enabled:
+        music_asset_id = next_id()
+        music_asset = ET.SubElement(
+            resources, "asset",
+            id=music_asset_id,
+            name=music.file_name or Path(music.path).name,
+            start="0s",
+            hasVideo="0",
+            hasAudio="1",
+        )
+        if music.duration:
+            music_asset.set("duration", _rational_time(music.duration, rate))
+        ET.SubElement(
+            music_asset, "media-rep",
+            kind="original-media",
+            src=Path(music.path).resolve().as_uri(),
         )
 
     library = ET.SubElement(root, "library")
@@ -161,6 +189,35 @@ def timeline_to_fcpxml(timeline: Timeline) -> str:
         if clip.reason:
             note = ET.SubElement(element, "note")
             note.text = f"[{clip.story_beat}] {clip.reason}"
+
+    # BGM as a connected clip on lane -1 under the first spine clip, with
+    # the preview's bed level applied via adjust-volume (editable in FCP).
+    if music_asset_id is not None and music is not None and timeline.clips:
+        first = spine.find("asset-clip")
+        if first is not None:
+            music_len = timeline.duration
+            if music.duration:
+                music_len = min(music.duration, timeline.duration)
+            music_clip = ET.SubElement(
+                first, "asset-clip",
+                ref=music_asset_id,
+                name=music.file_name or Path(music.path).stem,
+                lane="-1",
+                # Connected clips use the parent's source time base; aligning
+                # with the parent's `start` anchors the music at timeline 0.
+                offset=_rational_time(timeline.clips[0].source_in, rate),
+                start="0s",
+                duration=_rational_time(music_len, rate),
+                audioRole="music",
+            )
+            ET.SubElement(
+                music_clip, "adjust-volume", amount=f"{music.gain_db:g}dB"
+            )
+            music_note = ET.SubElement(music_clip, "note")
+            music_note.text = (
+                f"[BGM] {music.reason} "
+                "(fade/ducking applied in preview only)"
+            ).strip()
 
     ET.indent(root)
     body = ET.tostring(root, encoding="unicode")

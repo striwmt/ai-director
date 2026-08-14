@@ -42,6 +42,15 @@ def timeline_to_edl(timeline: Timeline) -> str:
         if clip.reason:
             lines.append(f"* COMMENT: [{clip.story_beat}] {clip.reason}")
         lines.append("")
+    # CMX3600 has no audio-level or second-source concept that survives
+    # every importer; carry the BGM as comments referencing the original.
+    music = timeline.music
+    if music is not None and music.enabled:
+        lines.append(f"* BGM CLIP NAME: {music.file_name or Path(music.path).name}")
+        lines.append(f"* BGM GAIN: {music.gain_db:g} DB")
+        if music.reason:
+            lines.append(f"* BGM REASON: {music.reason}")
+        lines.append("")
     return "\n".join(lines)
 
 
