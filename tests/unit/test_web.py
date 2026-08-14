@@ -44,7 +44,8 @@ def populated(config, memory, tmp_path):
              "story_beat": "hook", "reason": "r1"},
             {"segment_id": "seg_b", "source_in": 6.0, "source_out": 10.0,
              "story_beat": "main", "reason": "r2",
-             "caption": {"text": "駅", "secondary": "09:12", "duration": 3.0}},
+             "caption": {"text": "駅", "secondary": "09:12", "duration": 3.0},
+             "subtitles": [{"start": 7.0, "end": 9.0, "text": "こんにちは"}]},
         ],
     })
     plan_id = memory.save_edit_plan(run_id, plan_json)
@@ -175,6 +176,30 @@ def test_scrub_frame_missing_media(client, populated):
     # populated asset points at a nonexistent path and has no proxy
     res = client.get("/api/segments/seg_b/frame.jpg?t=7.0")
     assert res.status_code == 404
+
+
+def test_export_endpoints(client, populated):
+    plan_id = populated["plan_id"]
+
+    fcpxml = client.get(f"/api/plans/{plan_id}/export/fcpxml")
+    assert fcpxml.status_code == 200
+    assert "attachment" in fcpxml.headers["content-disposition"]
+    assert f"aidirector_{plan_id}.fcpxml" in fcpxml.headers["content-disposition"]
+    assert "clip.mp4" in fcpxml.text          # original media reference
+    assert "駅" in fcpxml.text                 # caption title carried over
+
+    srt = client.get(f"/api/plans/{plan_id}/export/srt")
+    assert srt.status_code == 200
+    # subtitle at source 7.0 in a clip starting source 6.0 / timeline 4.0 -> 5.0
+    assert "00:00:05,000 --> 00:00:07,000" in srt.text
+    assert "こんにちは" in srt.text
+
+    assert client.get(f"/api/plans/{plan_id}/export/otio").status_code == 200
+    edl = client.get(f"/api/plans/{plan_id}/export/edl")
+    assert edl.status_code == 200 and "FROM CLIP NAME" in edl.text
+
+    assert client.get(f"/api/plans/{plan_id}/export/mov").status_code == 422
+    assert client.get("/api/plans/plan_nope/export/fcpxml").status_code == 404
 
 
 def test_footage_validate(client, tmp_path):

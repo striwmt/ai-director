@@ -246,6 +246,52 @@ def save_plan(
 
 
 # ---------------------------------------------------------------------------
+# NLE export
+
+_EXPORT_FORMATS = {
+    "fcpxml": (".fcpxml", "application/xml"),
+    "otio": (".otio", "application/json"),
+    "edl": (".edl", "text/plain; charset=utf-8"),
+    "srt": (".srt", "application/x-subrip"),
+}
+
+
+@router.api_route("/plans/{plan_id}/export/{format}", methods=["GET", "HEAD"])
+def export_plan(
+    plan_id: str,
+    format: str,
+    config: AppConfig = Depends(get_config),
+    memory: MediaMemory = Depends(get_memory),
+):
+    """Download the plan for an NLE. References original camera media."""
+    if format not in _EXPORT_FORMATS:
+        raise HTTPException(
+            422, f"format must be one of: {', '.join(_EXPORT_FORMATS)}"
+        )
+    plan_json = memory.get_edit_plan(plan_id)
+    if plan_json is None:
+        raise HTTPException(404, f"plan not found: {plan_id}")
+    plan = EditPlan.model_validate_json(plan_json)
+    timeline = compile_timeline(plan, memory, canvas=config.output.canvas)
+
+    if format == "fcpxml":
+        from ...timeline.fcpxml import export_fcpxml as exporter
+    elif format == "otio":
+        from ...timeline.otio import export_otio as exporter
+    elif format == "edl":
+        from ...timeline.edl import export_edl as exporter
+    else:
+        from ...timeline.srt import export_srt as exporter
+
+    suffix, media_type = _EXPORT_FORMATS[format]
+    path = exporter(timeline, config.paths.renders_dir / f"{plan_id}{suffix}")
+    log.info("exported %s as %s", plan_id, format)
+    return FileResponse(
+        path, media_type=media_type, filename=f"aidirector_{plan_id}{suffix}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Creation (footage -> analyze -> director -> preview)
 
 

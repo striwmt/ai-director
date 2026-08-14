@@ -168,6 +168,13 @@
   <span class="runbadge" id="runBadge"></span>
   <span id="status"></span>
   <button id="createToggle">+ 新規作成</button>
+  <select id="exportSel" title="編集ソフトへ書き出し(元素材を参照します)">
+    <option value="">書き出し…</option>
+    <option value="fcpxml">FCPXML(FCP / Resolve)</option>
+    <option value="otio">OTIO</option>
+    <option value="edl">EDL</option>
+    <option value="srt">SRT 字幕</option>
+  </select>
   <button id="renderBtn">プレビュー生成</button>
   <button id="saveBtn" class="primary" disabled>保存(新バージョン)</button>
 </header>
@@ -613,6 +620,20 @@ $("saveBtn").onclick = async () => {
     await loadProject();
     await loadPlan(res.plan_id);
   }catch(e){ note(""); alert("保存できません:\n" + e.message); }
+};
+
+$("exportSel").onchange = () => {
+  const format = $("exportSel").value;
+  $("exportSel").value = "";
+  if(!format || !planId) return;
+  if(dirty && !confirm("未保存の変更は書き出しに含まれません。保存済みの内容で書き出しますか?")) return;
+  const a = document.createElement("a");
+  a.href = `/api/plans/${planId}/export/${format}`;
+  a.download = "";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  note(`${format.toUpperCase()} を書き出しました`);
 };
 
 $("renderBtn").onclick = async () => {
