@@ -95,12 +95,12 @@ Launching opens an app window (closing the window quits the app).
      (`.mp3/.wav/.m4a`); the AI picks the track that fits the story and
      mixes it in with fades and **automatic ducking** (music dips while
      people talk). CLI: `--music-dir`. With the `music` extra installed
-     the tracks themselves are analyzed once (tempo/key/energy via
-     Essentia or librosa, mood & genre tags via CLAP, lyrics via Whisper,
-     and a description from an audio LLM) so the pick is based on how the
-     music actually sounds, not just its file name. Pre-analyze a big
-     library with `aidirector music-analyze <folder>` — results are
-     cached per file and shared across projects.
+     the tracks themselves are analyzed once (tempo/key/energy, mood &
+     genre tags via CLAP, lyrics via Whisper, and a description from an
+     audio LLM) so the pick is based on how the music actually sounds,
+     not just its file name. Pre-analyze a big library with
+     `aidirector music-analyze <folder>` — results are cached per file
+     and shared across projects.
 6. Hit **作成開始 (Create)** and watch the phase-by-phase progress
 
 The first pass over new footage takes a while (the AI actually watches and
@@ -116,8 +116,13 @@ The draft appears as a timeline; every cut shows **why the AI chose it**.
   (edges = in/out, grab the middle to slide)
 - **Remove** with ✕
 - **Edit captions and subtitles** in place
-- **Tune the BGM** on its card above the timeline — volume, ducking
-  on/off, or remove it entirely
+- **Tune the BGM** on its card above the timeline — the card shows the
+  track's analysis facts (BPM, key, energy, tags, vocal/instrumental)
+  next to the AI's reason; adjust volume and ducking, or remove it
+- **Swap the BGM** with 曲を変更… (or + BGMを追加… when there is none):
+  a library panel lists every track in your music folder with its
+  analysis facts and description — one click replaces the track, and
+  unanalyzed folders can be analyzed right there in the background
 - **Add cuts** from the Media Memory panel — everything the AI understood
   about your footage, one click to append
 
@@ -169,6 +174,12 @@ normal browser tab; force that with `aidirector app --no-window`.
 
 **Draft quality is so-so** — be specific in the prompt (order, mood, what
 must stay). More footage and intact recording-time metadata both help.
+
+**Music analysis downloads a huge model** — the optional track-description
+step uses Qwen2.5-Omni-7B (~22 GB download, ~9 GB VRAM in 4-bit). In
+`config/models.yaml` you can switch `music_understanding` to the smaller
+`Qwen/Qwen2.5-Omni-3B` or disable it with `provider: none` — tempo/key,
+CLAP tags and lyrics detection keep working without it.
 
 ## License
 

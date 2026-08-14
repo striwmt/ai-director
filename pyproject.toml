@@ -32,6 +32,10 @@ embedding = [
 ]
 cv = ["opencv-python-headless>=4.9", "numpy>=1.26"]
 web = ["fastapi>=0.110", "uvicorn>=0.29"]
+# NOTE: Essentia is deliberately NOT a dependency — it is AGPL-3.0. The
+# feature extractor auto-detects and prefers it when the user installs it
+# themselves (Linux x86_64: `uv pip install essentia==2.1b6.dev1389`);
+# librosa (ISC) is the bundled path.
 music = [
     "librosa>=0.10",
     "soundfile>=0.12",
@@ -39,9 +43,6 @@ music = [
     "torch>=2.4",
     "accelerate>=0.30",
     "bitsandbytes>=0.45",
-    # Essentia ships Linux-x86_64 wheels only; dev1389 is the last cp311
-    # build, so the exact pre-release pin is required.
-    "essentia==2.1b6.dev1389; sys_platform == 'linux' and platform_machine == 'x86_64'",
 ]
 
 [dependency-groups]

@@ -21,10 +21,20 @@ Footage → Media Ingest → Color Management → Perception → Media Memory
 - **Media Memory**: every observation (metadata, segments, transcripts,
   VLM analysis, embeddings, technical features, provenance) is persisted
   in SQLite and queried — the director reasons over memory, not pixels.
-- **Replaceable models**: vision / director / speech / embedding sit
-  behind provider interfaces configured in `config/models.yaml`. Business
-  logic never imports model libraries. Phase execution keeps a single
-  16 GB GPU sufficient.
+- **Replaceable models**: vision / director / speech / embedding /
+  music-embedding / music-understanding sit behind provider interfaces
+  configured in `config/models.yaml`. Business logic never imports model
+  libraries. Phase execution keeps a single 16 GB GPU sufficient.
+- **Music library analysis** (BGM feature): tracks in the user's music
+  folder are analyzed once — BPM/key/energy (librosa; Essentia is used
+  automatically if the user installs it themselves — it is AGPL-3.0, so
+  it is never a dependency), CLAP zero-shot genre/mood/instrument tags + a
+  stored audio embedding, lyrics/vocal detection via faster-whisper, and
+  an optional audio-LLM description — and cached globally in the
+  `music_tracks` table keyed by content hash (rename-safe, shared across
+  projects). Selection itself never runs a model: the director LLM gets
+  an annotated track list; libraries >60 tracks are ranked by a CLAP
+  text-query embedding computed on the CPU.
 
 Reference model set (verified on RTX 5060 Ti 16GB):
 
@@ -34,6 +44,8 @@ Reference model set (verified on RTX 5060 Ti 16GB):
 | Director | Qwen3-8B Q4_K_M | `llama-server` (managed) or `openai-compatible` |
 | Embedding | Qwen3-VL-Embedding-2B | `sentence-transformers` |
 | Speech | faster-whisper large-v3-turbo | `faster-whisper` |
+| Music embedding | CLAP (laion/clap-htsat-unfused) | `transformers` |
+| Music understanding | Qwen2.5-Omni-7B, Thinker-only 4-bit (~9 GB peak VRAM) | `transformers` (or `none`) |
 
 ## Setup
 
@@ -45,7 +57,12 @@ uv sync --extra speech       # + faster-whisper (local ASR)
 uv sync --extra vision       # + transformers/torch (local VLM)
 uv sync --extra embedding    # + sentence-transformers (retrieval)
 uv sync --extra web          # + review/edit web UI
+uv sync --extra music        # + BGM analysis (librosa, CLAP, audio LLM)
 ```
+
+Optional, at your own discretion (AGPL-3.0, Linux x86_64 only — not a
+project dependency): `uv pip install essentia==2.1b6.dev1389` upgrades
+BPM/key extraction; it is detected and preferred automatically.
 
 Model endpoints live in `config/models.yaml`; never hardcode model names
 in code. An external OpenAI-compatible director server can be started with:
@@ -64,7 +81,8 @@ aidirector ingest ./footage [--color-profile dji-dlog2]
 aidirector analyze ./footage            # segments, ASR, VLM, embeddings
 aidirector edit ./footage --duration 90 --profile travel_vlog \
     --prompt "..." --captions beats --caption-format "{HH}:{MM} {PLACE}" \
-    --subtitles --canvas landscape
+    --subtitles --canvas landscape --music-dir ./bgm
+aidirector music-analyze ./bgm          # pre-analyze a BGM library (cached)
 aidirector search ./footage "夕焼け"     # semantic search over media memory
 aidirector preview <plan-id|latest> [--canvas ...]
 aidirector export <plan-id|latest> --format fcpxml|otio|edl|srt
@@ -82,6 +100,11 @@ FastAPI backend (`src/aidirector/web/`) + a single-file vanilla-JS
 frontend (`web/static/index.html`). API docs at `/api/docs`. Creation runs
 as a single-slot background job with phase/log polling; edits are saved as
 new validated plan versions and user actions are recorded as feedback.
+The BGM library modal is backed by `GET /api/music/tracks` (scan + hash +
+DB lookup only, no probing) and `POST /api/music/analyze` (a second job
+slot, mutually exclusive with the create job for the GPU). The plan-save
+endpoint keeps `music` when the field is omitted; an explicit `null`
+removes it. `#project=…&plan=…` deep links restore the view on reload.
 
 ## Docker
 
@@ -104,7 +127,9 @@ uv run pytest        # unit + golden + integration (ffmpeg required)
 
 AI output text is never exact-match tested; mock providers return
 schema-valid objects (see `tests/conftest.py`). Golden tests cover
-Edit Plan → FCPXML/EDL/OTIO.
+Edit Plan → FCPXML/EDL/OTIO (with and without a music track). Music
+feature extraction is tested against synthesized click tracks and pure
+tones (BPM/key assertions with harmonic tolerance).
 
 ## Installers & desktop
 
@@ -118,7 +143,8 @@ Edit Plan → FCPXML/EDL/OTIO.
   shell template; see [desktop/README.md](../desktop/README.md)
 
 Do not bundle: vendor LUTs, Windows system fonts, ffmpeg (without GPL
-compliance), NVIDIA runtime libraries (fetched from PyPI instead).
+compliance), NVIDIA runtime libraries (fetched from PyPI instead), and
+Essentia (AGPL-3.0 — user-installed only, auto-detected).
 
 ## Repository layout
 
@@ -126,7 +152,7 @@ compliance), NVIDIA runtime libraries (fetched from PyPI instead).
 src/aidirector/
 ├── media/        ingest, ffprobe, metadata, proxy, segmentation, frames
 ├── color/        profiles, detection, transform registry, LUTs, pipeline
-├── perception/   speech, technical CV, vision, embeddings, interpretation
+├── perception/   speech, technical CV, vision, embeddings, music analysis
 ├── ai/           schemas, services facade, runtime manager, providers/
 ├── memory/       SQLite media memory, repository, search, migrations
 ├── director/     story/beat planners, selector, editor, critic, prompts/

@@ -21,10 +21,19 @@ Footage → Media Ingest → Color Management → Perception → Media Memory
 - **Media Memory**: すべての観測結果(メタデータ、セグメント、文字起こし、
   VLM解析、embedding、テクニカル特徴、provenance)をSQLiteに永続化して検索。
   ディレクターはピクセルではなく記憶に対して推論します。
-- **モデルは交換可能**: vision / director / speech / embedding は
-  `config/models.yaml` で設定するProvider interfaceの背後にあり、ビジネス
-  ロジックはモデルライブラリをimportしません。phase executionにより
-  16GB GPU 1枚で完結します。
+- **モデルは交換可能**: vision / director / speech / embedding /
+  music_embedding / music_understanding は `config/models.yaml` で設定する
+  Provider interfaceの背後にあり、ビジネスロジックはモデルライブラリを
+  importしません。phase executionにより16GB GPU 1枚で完結します。
+- **BGMライブラリ解析**: 音楽フォルダの各曲を一度だけ解析 — BPM/キー/
+  エネルギー(librosa。EssentiaはAGPL-3.0のため依存に含めず、ユーザーが
+  自分で導入した場合のみ自動検出して優先利用)、CLAPによる
+  ゼロショットのジャンル/ムード/楽器タグ+音声embedding保存、faster-whisper
+  による歌詞/ボーカル判定、音声LLMによる説明文(任意)— 結果はコンテンツ
+  ハッシュをキーに `music_tracks` テーブルへグローバルにキャッシュ
+  (リネーム耐性あり・プロジェクト間共有)。選曲時はモデルを動かさず、
+  director LLMに注釈付きトラックリストを渡します(60曲超はCLAPテキスト
+  クエリ埋め込みを**CPU**で計算してランキング)。
 
 リファレンスモデル構成(RTX 5060 Ti 16GBで検証済み):
 
@@ -34,6 +43,8 @@ Footage → Media Ingest → Color Management → Perception → Media Memory
 | Director | Qwen3-8B Q4_K_M | `llama-server`(自動管理)or `openai-compatible` |
 | Embedding | Qwen3-VL-Embedding-2B | `sentence-transformers` |
 | 音声認識 | faster-whisper large-v3-turbo | `faster-whisper` |
+| 楽曲embedding | CLAP(laion/clap-htsat-unfused) | `transformers` |
+| 楽曲理解 | Qwen2.5-Omni-7B(Thinkerのみ4bit、ピーク約9GB VRAM) | `transformers`(または `none`) |
 
 ## セットアップ
 
@@ -45,7 +56,12 @@ uv sync --extra speech       # + faster-whisper(ローカルASR)
 uv sync --extra vision       # + transformers/torch(ローカルVLM)
 uv sync --extra embedding    # + sentence-transformers(検索)
 uv sync --extra web          # + レビュー/編集Web UI
+uv sync --extra music        # + BGM解析(librosa、CLAP、音声LLM)
 ```
+
+任意・自己判断で(AGPL-3.0、Linux x86_64のみ。プロジェクトの依存ではありま
+せん): `uv pip install essentia==2.1b6.dev1389` でBPM/キー抽出が高精度化
+します(導入されていれば自動検出して優先利用)。
 
 モデルのエンドポイントは `config/models.yaml` で設定します(コードへの
 ハードコード禁止)。外部のOpenAI互換directorサーバを使う場合:
@@ -64,7 +80,8 @@ aidirector ingest ./footage [--color-profile dji-dlog2]
 aidirector analyze ./footage            # セグメント、ASR、VLM、embedding
 aidirector edit ./footage --duration 90 --profile travel_vlog \
     --prompt "..." --captions beats --caption-format "{HH}:{MM} {PLACE}" \
-    --subtitles --canvas landscape
+    --subtitles --canvas landscape --music-dir ./bgm
+aidirector music-analyze ./bgm          # BGMライブラリの事前解析(キャッシュ)
 aidirector search ./footage "夕焼け"     # Media Memoryのセマンティック検索
 aidirector preview <plan-id|latest> [--canvas ...]
 aidirector export <plan-id|latest> --format fcpxml|otio|edl|srt
@@ -83,6 +100,11 @@ FastAPIバックエンド(`src/aidirector/web/`)+ 単一ファイルのvanilla J
 作成は単一スロットのバックグラウンドジョブ(フェーズ/ログをポーリング)で、
 編集は検証済みの新バージョンとして保存され、ユーザー操作はフィードバックと
 して記録されます。
+BGMライブラリモーダルは `GET /api/music/tracks`(スキャン+ハッシュ+DB参照
+のみ、プローブなし)と `POST /api/music/analyze`(第2のジョブスロット。GPU
+保護のため作成ジョブと相互排他)を使います。プラン保存APIは `music`
+フィールド省略時に既存値を維持し、明示的な `null` で削除します。
+`#project=…&plan=…` のディープリンクでリロード時に表示を復元します。
 
 ## Docker
 
@@ -105,7 +127,9 @@ uv run pytest        # unit + golden + integration(ffmpeg必須)
 
 AI出力の自然言語は完全一致テストしません。mock providerがスキーマ準拠の
 オブジェクトを返します(`tests/conftest.py`)。golden testは
-Edit Plan → FCPXML/EDL/OTIO をカバーします。
+Edit Plan → FCPXML/EDL/OTIO(BGMトラックあり/なし)をカバーします。楽曲
+特徴量は合成クリック音・純音に対してテストします(BPM/キーを倍音許容付きで
+検証)。
 
 ## インストーラ・デスクトップ
 
@@ -119,7 +143,8 @@ Edit Plan → FCPXML/EDL/OTIO をカバーします。
   Tauri v2シェルテンプレート。[desktop/README.md](../desktop/README.md) 参照
 
 同梱禁止: メーカー製LUT、Windowsシステムフォント、ffmpeg(GPL遵守なしの
-場合)、NVIDIAランタイムライブラリ(代わりにPyPIから取得)。
+場合)、NVIDIAランタイムライブラリ(代わりにPyPIから取得)、
+Essentia(AGPL-3.0 — ユーザー導入時のみ自動検出)。
 
 ## リポジトリ構成
 
@@ -127,7 +152,7 @@ Edit Plan → FCPXML/EDL/OTIO をカバーします。
 src/aidirector/
 ├── media/        ingest、ffprobe、メタデータ、proxy、セグメント分割、フレーム
 ├── color/        プロファイル、判定、変換レジストリ、LUT、パイプライン
-├── perception/   音声認識、テクニカルCV、映像理解、embedding、解釈
+├── perception/   音声認識、テクニカルCV、映像理解、embedding、楽曲解析
 ├── ai/           スキーマ、servicesファサード、ランタイム管理、providers/
 ├── memory/       SQLite Media Memory、リポジトリ、検索、マイグレーション
 ├── director/     story/beatプランナー、selector、editor、critic、prompts/

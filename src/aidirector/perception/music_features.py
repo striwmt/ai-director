@@ -1,8 +1,10 @@
 """Deterministic music features: BPM, key, energy (AGENT.md §2 — facts).
 
-Essentia (Linux x86_64 wheel) is preferred for its multifeature rhythm
-extractor and key profile; librosa is the portable fallback (all OS).
-Callers get a plain dict either way, with `backend` recording which ran.
+librosa (ISC) is the bundled backend. Essentia is preferred when present
+for its multifeature rhythm extractor and key profile, but it is AGPL-3.0
+and therefore never a project dependency — users may install it
+themselves (Linux x86_64: `uv pip install essentia==2.1b6.dev1389`) and
+it is picked up automatically. `backend` records which one ran.
 """
 
 from __future__ import annotations
