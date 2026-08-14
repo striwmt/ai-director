@@ -141,6 +141,25 @@ _MIGRATIONS: list[str] = [
     """
     ALTER TABLE edit_plans ADD COLUMN name TEXT;
     """,
+    # v3 — global music-library analysis cache, keyed by content hash so it
+    # survives renames and is shared across projects. CLAP vectors live in
+    # the embeddings table (owner_type='music', owner_id=music_tracks.id).
+    """
+    CREATE TABLE music_tracks (
+        id TEXT PRIMARY KEY,              -- mus_<sha1(partial_hash:size)[:16]>
+        path TEXT NOT NULL,               -- last-seen absolute path
+        file_name TEXT NOT NULL,
+        duration REAL,
+        analysis_version INTEGER NOT NULL DEFAULT 1,
+        features_json TEXT,               -- bpm / key / energy facts
+        tags_json TEXT,                   -- [{tag, category, score}]
+        lyrics_json TEXT,                 -- {language, is_vocal, speech_ratio, excerpt}
+        description TEXT,                 -- audio-LLM free-text description
+        provenance_json TEXT NOT NULL DEFAULT '{}',
+        analyzed_at TEXT,                 -- NULL until every enabled component ran
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    """,
 ]
 
 

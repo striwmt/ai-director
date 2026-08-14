@@ -55,6 +55,20 @@ class AIServices:
         provider = await self.runtime.acquire("embedding")
         return await provider.embed_text(texts)
 
+    # -- music ---------------------------------------------------------
+
+    async def embed_audio(self, wav: Path) -> Embedding:
+        provider = await self.runtime.acquire("music_embedding")
+        return await provider.embed_audio(wav)
+
+    async def music_text_embed(self, texts: list[str]) -> list[Embedding]:
+        provider = await self.runtime.acquire("music_embedding")
+        return await provider.embed_music_text(texts)
+
+    async def describe_audio(self, wav: Path, prompt: str) -> str:
+        provider = await self.runtime.acquire("music_understanding")
+        return await provider.describe_audio(wav, prompt)
+
     # -- director ------------------------------------------------------
 
     async def generate_structured(

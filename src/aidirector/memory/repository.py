@@ -18,6 +18,7 @@ from ..media.metadata import MediaMetadata
 from .models import (
     AssetRecord,
     FrameRecord,
+    MusicTrackRecord,
     ProjectRecord,
     SegmentRecord,
     TechnicalFeatures,
@@ -419,6 +420,71 @@ class MediaMemory:
             WHERE e.owner_type = 'segment' AND e.kind = ? AND a.project_id = ?
             """,
             (kind, project_id),
+        ).fetchall()
+        return [(r["owner_id"], _unpack_vector(r["vector"])) for r in rows]
+
+    # -- music library (global, content-hash keyed) ---------------------------
+
+    def save_music_track(self, record: MusicTrackRecord) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO music_tracks (
+                id, path, file_name, duration, analysis_version,
+                features_json, tags_json, lyrics_json, description,
+                provenance_json, analyzed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                path = excluded.path,
+                file_name = excluded.file_name,
+                duration = excluded.duration,
+                analysis_version = excluded.analysis_version,
+                features_json = excluded.features_json,
+                tags_json = excluded.tags_json,
+                lyrics_json = excluded.lyrics_json,
+                description = excluded.description,
+                provenance_json = excluded.provenance_json,
+                analyzed_at = excluded.analyzed_at
+            """,
+            (
+                record.id, record.path, record.file_name, record.duration,
+                record.analysis_version,
+                json.dumps(record.features, ensure_ascii=False),
+                json.dumps(record.tags, ensure_ascii=False),
+                json.dumps(record.lyrics, ensure_ascii=False),
+                record.description,
+                json.dumps(record.provenance, ensure_ascii=False),
+                record.analyzed_at,
+            ),
+        )
+        self.conn.commit()
+
+    def get_music_track(self, track_id: str) -> MusicTrackRecord | None:
+        row = self.conn.execute(
+            "SELECT * FROM music_tracks WHERE id = ?", (track_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return MusicTrackRecord(
+            id=row["id"],
+            path=row["path"],
+            file_name=row["file_name"],
+            duration=row["duration"],
+            analysis_version=row["analysis_version"],
+            features=json.loads(row["features_json"] or "{}"),
+            tags=json.loads(row["tags_json"] or "[]"),
+            lyrics=json.loads(row["lyrics_json"] or "{}"),
+            description=row["description"] or "",
+            provenance=json.loads(row["provenance_json"] or "{}"),
+            analyzed_at=row["analyzed_at"],
+        )
+
+    def iter_music_embeddings(
+        self, kind: str = "audio"
+    ) -> list[tuple[str, list[float]]]:
+        rows = self.conn.execute(
+            "SELECT owner_id, vector FROM embeddings "
+            "WHERE owner_type = 'music' AND kind = ?",
+            (kind,),
         ).fetchall()
         return [(r["owner_id"], _unpack_vector(r["vector"])) for r in rows]
 

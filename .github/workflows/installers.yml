@@ -16,7 +16,7 @@ jobs:
       - name: Generate THIRD_PARTY_LICENSES.md from the locked env
         run: |
           uv sync --frozen --no-dev --extra speech --extra vision \
-            --extra embedding --extra web
+            --extra embedding --extra web --extra music
           uv run python scripts/generate_third_party_licenses.py
       - uses: actions/upload-artifact@v4
         with:

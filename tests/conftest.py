@@ -203,6 +203,48 @@ class MockSpeechProvider:
         )
 
 
+class MockMusicEmbeddingProvider:
+    """Deterministic CLAP-style vectors from content hashes."""
+
+    name = "mock:clap"
+
+    def __init__(self) -> None:
+        self.audio_calls = 0
+        self.text_calls = 0
+
+    async def load(self) -> None: ...
+    async def unload(self) -> None: ...
+
+    @staticmethod
+    def _vector(seed: str) -> list[float]:
+        digest = hashlib.sha256(seed.encode()).digest()
+        return [(b - 128) / 128.0 for b in digest[:32]]
+
+    async def embed_audio(self, wav):
+        self.audio_calls += 1
+        return Embedding(vector=self._vector(Path(wav).name), model="mock-clap")
+
+    async def embed_music_text(self, texts):
+        self.text_calls += 1
+        return [
+            Embedding(vector=self._vector(t), model="mock-clap") for t in texts
+        ]
+
+
+class MockMusicUnderstandingProvider:
+    name = "mock:omni"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def load(self) -> None: ...
+    async def unload(self) -> None: ...
+
+    async def describe_audio(self, wav, prompt):
+        self.calls += 1
+        return "A calm ambient track with soft piano and slow pads."
+
+
 @pytest.fixture()
 def mock_ai(config: AppConfig) -> AIServices:
     runtime = ModelRuntimeManager(config.models, exclusive=False)
@@ -210,6 +252,8 @@ def mock_ai(config: AppConfig) -> AIServices:
     runtime.override("embedding", MockEmbeddingProvider())
     runtime.override("vision", MockVisionProvider())
     runtime.override("speech", MockSpeechProvider())
+    runtime.override("music_embedding", MockMusicEmbeddingProvider())
+    runtime.override("music_understanding", MockMusicUnderstandingProvider())
     return AIServices(runtime)
 
 

@@ -107,6 +107,37 @@ def analyze(
     typer.echo(f"analysis complete: project {project_id}")
 
 
+@app.command("music-analyze")
+def music_analyze(
+    music_dir: Path = typer.Argument(..., help="Folder of music files"),
+    config_file: Optional[Path] = typer.Option(None, "--config"),
+    log_level: Optional[str] = typer.Option(None, "--log-level"),
+) -> None:
+    """Analyze a BGM library (BPM/key/energy, tags, lyrics, description).
+
+    Results are cached globally by content hash, so this only ever pays
+    for new or changed files; `edit --music-dir` then selects instantly.
+    """
+    if not music_dir.is_dir():
+        raise typer.BadParameter(f"not a directory: {music_dir}")
+    config = _setup(config_file, log_level)
+    memory = _open_memory(config)
+    ai = _make_ai(config)
+    from .perception.music import analyze_music_library
+
+    async def _run() -> int:
+        try:
+            return await analyze_music_library(music_dir, config, memory, ai)
+        finally:
+            await ai.runtime.release_all()
+
+    try:
+        count = asyncio.run(_run())
+    except AIDirectorError as exc:
+        raise typer.Exit(code=_fail(str(exc)))
+    typer.echo(f"music analysis complete: {count} track(s) analyzed")
+
+
 @app.command()
 def edit(
     footage: Path = typer.Argument(..., help="Footage directory"),

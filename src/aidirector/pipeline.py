@@ -259,6 +259,21 @@ async def run_full_edit(
         progress=progress,
     )
 
+    # Music-library analysis (cached globally; no-op when fully analyzed).
+    effective_music_dir = music_dir if music_dir is not None else config.output.music_dir
+    if effective_music_dir is not None:
+        notify("music")
+        try:
+            from .perception.music import analyze_music_library
+
+            await analyze_music_library(
+                Path(effective_music_dir), config, memory, ai, progress
+            )
+        except Exception as exc:
+            log.warning("music analysis phase skipped: %s", exc)
+        finally:
+            await ai.runtime.release_all()
+
     notify("director")
     plan_id, plan = await run_director(
         project_id, config, memory, ai,

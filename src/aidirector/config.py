@@ -119,6 +119,16 @@ class ModelsConfig(BaseModel):
         provider="sentence-transformers", model="Qwen/Qwen3-VL-Embedding-2B",
         device="auto",
     )
+    # Music-library analysis (BGM feature). CLAP embeds audio and the tag
+    # vocabulary into one space; the audio LLM writes a free-text track
+    # description ("none" disables that component).
+    music_embedding: ModelEndpointConfig = ModelEndpointConfig(
+        provider="transformers", model="laion/clap-htsat-unfused", device="auto",
+    )
+    music_understanding: ModelEndpointConfig = ModelEndpointConfig(
+        provider="transformers", model="Qwen/Qwen2.5-Omni-7B", device="auto",
+        extra={"quantization": "4bit", "max_audio_seconds": 30},
+    )
 
 
 class OutputConfig(BaseModel):

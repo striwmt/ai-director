@@ -94,7 +94,13 @@ Launching opens an app window (closing the window quits the app).
    - **BGM** — point **BGMフォルダ** at a folder of music files
      (`.mp3/.wav/.m4a`); the AI picks the track that fits the story and
      mixes it in with fades and **automatic ducking** (music dips while
-     people talk). CLI: `--music-dir`
+     people talk). CLI: `--music-dir`. With the `music` extra installed
+     the tracks themselves are analyzed once (tempo/key/energy via
+     Essentia or librosa, mood & genre tags via CLAP, lyrics via Whisper,
+     and a description from an audio LLM) so the pick is based on how the
+     music actually sounds, not just its file name. Pre-analyze a big
+     library with `aidirector music-analyze <folder>` — results are
+     cached per file and shared across projects.
 6. Hit **作成開始 (Create)** and watch the phase-by-phase progress
 
 The first pass over new footage takes a while (the AI actually watches and

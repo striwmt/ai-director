@@ -48,6 +48,11 @@ def make_asset_id(partial_hash: str, size: int) -> str:
     return "ast_" + hashlib.sha1(f"{partial_hash}:{size}".encode()).hexdigest()[:16]
 
 
+def make_music_id(partial_hash: str, size: int) -> str:
+    """Content key for the global music-library cache (rename-safe)."""
+    return "mus_" + hashlib.sha1(f"{partial_hash}:{size}".encode()).hexdigest()[:16]
+
+
 @dataclass
 class IngestReport:
     ingested: list[str] = field(default_factory=list)

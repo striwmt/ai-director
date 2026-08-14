@@ -19,7 +19,10 @@ from ..logging import get_logger
 
 log = get_logger("runtime")
 
-Workload = Literal["vision", "director", "speech", "embedding"]
+Workload = Literal[
+    "vision", "director", "speech", "embedding",
+    "music_embedding", "music_understanding",
+]
 
 _FACTORY = Callable[[ModelEndpointConfig], Any]
 
@@ -72,11 +75,30 @@ def _make_embedding_provider(cfg: ModelEndpointConfig) -> Any:
     raise ProviderError(f"unknown embedding provider: {cfg.provider}")
 
 
+def _make_music_embedding_provider(cfg: ModelEndpointConfig) -> Any:
+    if cfg.provider == "transformers":
+        from .providers.music import ClapMusicEmbeddingProvider
+
+        return ClapMusicEmbeddingProvider(cfg)
+    raise ProviderError(f"unknown music_embedding provider: {cfg.provider}")
+
+
+def _make_music_understanding_provider(cfg: ModelEndpointConfig) -> Any:
+    # "none" is handled by callers (they skip the component entirely).
+    if cfg.provider == "transformers":
+        from .providers.music import QwenOmniMusicProvider
+
+        return QwenOmniMusicProvider(cfg)
+    raise ProviderError(f"unknown music_understanding provider: {cfg.provider}")
+
+
 _FACTORIES: dict[Workload, _FACTORY] = {
     "speech": _make_speech_provider,
     "vision": _make_vision_provider,
     "director": _make_director_provider,
     "embedding": _make_embedding_provider,
+    "music_embedding": _make_music_embedding_provider,
+    "music_understanding": _make_music_understanding_provider,
 }
 
 
@@ -93,6 +115,15 @@ class ModelRuntimeManager:
         self._active: dict[Workload, Any] = {}
         # Test/embedding-in-python overrides: inject a prebuilt provider.
         self._overrides: dict[Workload, Any] = {}
+        # OpenSSL 3.x quirk: the FIRST SSLContext must be created on the
+        # main thread. Providers load (and download models) in worker
+        # threads, so warm it here while we are still on the main thread.
+        try:
+            import ssl
+
+            ssl.create_default_context()
+        except Exception as exc:  # pragma: no cover - environment specific
+            log.warning("ssl warmup failed: %s", exc)
 
     def override(self, workload: Workload, provider: Any) -> None:
         """Inject a provider instance (used by tests and custom wiring)."""

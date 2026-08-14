@@ -81,6 +81,22 @@ class SemanticAnnotationRow(BaseModel):
     provenance: Provenance
 
 
+class MusicTrackRecord(BaseModel):
+    """Analysis of one music-library file (global, content-hash keyed)."""
+
+    id: str                                 # mus_<hash>
+    path: str
+    file_name: str
+    duration: float | None = None
+    analysis_version: int = 1
+    features: dict = {}                     # bpm / key / energy facts
+    tags: list[dict] = []                   # [{tag, category, score}]
+    lyrics: dict = {}                       # {language, is_vocal, speech_ratio, excerpt}
+    description: str = ""
+    provenance: dict = {}
+    analyzed_at: str | None = None
+
+
 class ColorStateRow(BaseModel):
     asset_id: str
     detection: ColorProfileDetection

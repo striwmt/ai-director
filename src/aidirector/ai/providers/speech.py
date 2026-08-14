@@ -111,6 +111,7 @@ class FasterWhisperProvider:
             word_timestamps=options.word_timestamps,
             vad_filter=options.vad,
             beam_size=options.beam_size,
+            condition_on_previous_text=options.condition_on_previous_text,
         )
         segments: list[TranscriptSegment] = []
         for seg in segments_iter:

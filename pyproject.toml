@@ -32,6 +32,17 @@ embedding = [
 ]
 cv = ["opencv-python-headless>=4.9", "numpy>=1.26"]
 web = ["fastapi>=0.110", "uvicorn>=0.29"]
+music = [
+    "librosa>=0.10",
+    "soundfile>=0.12",
+    "transformers>=4.52",
+    "torch>=2.4",
+    "accelerate>=0.30",
+    "bitsandbytes>=0.45",
+    # Essentia ships Linux-x86_64 wheels only; dev1389 is the last cp311
+    # build, so the exact pre-release pin is required.
+    "essentia==2.1b6.dev1389; sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
 
 [dependency-groups]
 dev = [

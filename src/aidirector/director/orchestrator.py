@@ -20,7 +20,13 @@ from ..perception.interpretation import SegmentUnderstanding, build_understandin
 from .beat_planner import plan_beats
 from .critic import critique_edit
 from .editor import describe_selection, edit_sequence, enforce_target_duration
-from .music import list_music_tracks, resolve_choice, select_music
+from .music import (
+    annotate_tracks,
+    list_music_tracks,
+    rank_tracks_for_prompt,
+    resolve_choice,
+    select_music,
+)
 from .profile import DirectorProfile, load_director_profile
 from .prompts import PROMPT_VERSION
 from .schemas import (
@@ -359,6 +365,13 @@ async def run_director(
             tracks = list_music_tracks(Path(effective_music_dir))
             if tracks:
                 try:
+                    # Cached content analysis (BPM/tags/lyrics/description);
+                    # tracks without a cache row stay filename-only.
+                    annotate_tracks(tracks, memory)
+                    tracks = rank_tracks_for_prompt(
+                        tracks, memory, story=story, user_prompt=user_prompt,
+                        clap_model=config.models.music_embedding.model,
+                    )
                     choice = await select_music(
                         ai, story=story, user_prompt=user_prompt,
                         target_duration=target_duration, tracks=tracks,

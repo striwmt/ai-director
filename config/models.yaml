@@ -39,3 +39,22 @@ models:
     provider: sentence-transformers      # official path for Qwen3-VL-Embedding
     model: Qwen/Qwen3-VL-Embedding-2B
     device: auto
+
+  # --- Music-library analysis (BGM feature, optional) ---------------------
+  # CLAP: audio-text embeddings for zero-shot mood/genre tags (~600MB).
+  music_embedding:
+    provider: transformers
+    model: laion/clap-htsat-unfused
+    device: auto
+
+  # Audio LLM writing a free-text description per track. Text output only
+  # (the Talker is never loaded). NOTE: first run downloads the full BF16
+  # repository (~22GB) even for the 4-bit load.
+  #   - low VRAM alternative:  model: Qwen/Qwen2.5-Omni-3B
+  #   - future models: swap `model` and extra.model_class
+  #   - disable descriptions:  provider: none
+  music_understanding:
+    provider: transformers
+    model: Qwen/Qwen2.5-Omni-7B
+    device: auto
+    extra: { quantization: 4bit, max_audio_seconds: 30 }

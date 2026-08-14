@@ -80,6 +80,8 @@ class TranscriptionOptions(BaseModel):
     word_timestamps: bool = True
     vad: bool = True
     beam_size: int = 5
+    # False curbs hallucinated loops on music/instrumental input.
+    condition_on_previous_text: bool = True
 
 
 class TranscriptWord(BaseModel):
