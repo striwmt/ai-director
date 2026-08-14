@@ -35,6 +35,12 @@ local AI that understands your material and drafts the edit for you.**
 3. Launch **AI Director** from the Start menu — **the first run downloads
    several GB of AI models**, so give it time
 
+> The installer is not code-signed yet, so SmartScreen may warn you
+> (choose "More info" → "Run anyway"). If **Smart App Control** is on,
+> Windows blocks all unsigned apps with no per-app override — it can only
+> be turned off in Windows Security → App & browser control (turning it
+> back on requires reinstalling Windows, so decide carefully).
+
 ### Linux
 
 1. Download `AIDirector-x86_64.AppImage` from [Releases](../../releases)

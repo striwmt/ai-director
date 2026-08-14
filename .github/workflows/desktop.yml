@@ -1,9 +1,9 @@
 # AI Director desktop (Tauri) builds
 name: desktop installers
 
+# Experimental Tauri shell — built on demand only; the release installers
+# come from installers.yml.
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
 
 jobs:

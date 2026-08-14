@@ -267,10 +267,12 @@ def _serve(
 ) -> None:
     try:
         import uvicorn
-    except ImportError as exc:
-        raise typer.Exit(
-            code=_fail("web extra not installed. Run: uv sync --extra web")
-        ) from exc
+    except ModuleNotFoundError as exc:
+        if exc.name in ("uvicorn", "fastapi"):
+            raise typer.Exit(
+                code=_fail("web extra not installed. Run: uv sync --extra web")
+            ) from exc
+        raise  # a dependency of uvicorn is broken — show the real traceback
     from .web.app import create_app
 
     if port == 0:

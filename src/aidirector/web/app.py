@@ -31,10 +31,12 @@ def create_app(config: AppConfig):
     try:
         from fastapi import FastAPI
         from fastapi.responses import FileResponse
-    except ImportError as exc:
-        raise RuntimeError(
-            "web extra not installed. Install with: uv sync --extra web"
-        ) from exc
+    except ModuleNotFoundError as exc:
+        if exc.name in ("fastapi", "uvicorn"):
+            raise RuntimeError(
+                "web extra not installed. Install with: uv sync --extra web"
+            ) from exc
+        raise  # a dependency of fastapi is broken — show the real traceback
 
     _warm_ssl()
 

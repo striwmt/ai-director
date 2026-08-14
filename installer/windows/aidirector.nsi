@@ -33,6 +33,7 @@ Section "AI Director"
   FileWrite $0 'cd /d "%~dp0app"$\r$\n'
   FileWrite $0 '"%~dp0bin\uv.exe" sync --frozen --no-dev --extra speech --extra vision --extra embedding --extra web || (pause & exit /b 1)$\r$\n'
   FileWrite $0 '"%~dp0bin\uv.exe" run --no-sync aidirector app$\r$\n'
+  FileWrite $0 'if errorlevel 1 (echo AI Director exited with an error - see the messages above. & pause)$\r$\n'
   FileClose $0
 
   CreateDirectory "$SMPROGRAMS\AI Director"
