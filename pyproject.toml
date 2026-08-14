@@ -1,6 +1,6 @@
 [project]
 name = "aidirector"
-version = "0.1.0"
+version = "0.1.1"
 description = "Local AI Director: understands footage, plans a story, and produces an editable edit plan."
 readme = "README.md"
 requires-python = ">=3.11"

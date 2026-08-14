@@ -70,6 +70,9 @@ def launch_app_window(
     ):
         log.warning("no display available; falling back to browser mode")
         return None
+    # Chromium rejects a relative --user-data-dir (Edge: "can't read and
+    # write to its data directory"), so resolve against the cwd first.
+    profile_dir = profile_dir.expanduser().resolve()
     profile_dir.mkdir(parents=True, exist_ok=True)
     command = [
         executable,

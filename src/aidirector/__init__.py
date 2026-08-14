@@ -5,4 +5,4 @@ Architecture (see AGENT.md):
     Media -> Color -> Perception -> AI Services / Providers -> Memory -> Director -> Timeline
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
