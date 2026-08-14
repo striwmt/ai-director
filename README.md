@@ -99,7 +99,7 @@ carried into NLE exports as FCPXML titles / OTIO markers / EDL comments.
 
 ```bash
 aidirector web            # → http://127.0.0.1:8484/
-aidirector app            # desktop mode: free port + opens your browser
+aidirector app            # desktop mode: standalone app window (see below)
 ```
 
 Create edits from the browser (footage path + prompt + settings, with live
@@ -115,6 +115,20 @@ starts/stops `llama-server` itself around the director phase — it never
 holds VRAM during vision analysis, and an already-running server on the
 port is reused instead. Works on Windows and Linux (caption fonts and the
 CUDA runtime shims are resolved per-platform).
+
+## Desktop app (Windows / Linux)
+
+`aidirector app` opens a **standalone app window** (Chromium app mode —
+Edge on Windows, Chrome/Chromium elsewhere); closing the window shuts the
+backend down. On a fresh machine, one command sets everything up:
+
+```bash
+python desktop/bootstrap.py     # downloads uv, builds the env, launches the app
+```
+
+`desktop/tauri` contains a Tauri v2 shell template for building real
+installers (MSI/NSIS, AppImage/deb) via CI — see
+[desktop/README.md](desktop/README.md).
 
 ## Docker
 

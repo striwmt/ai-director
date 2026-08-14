@@ -1,0 +1,46 @@
+name: desktop installers
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04     # AppImage / deb
+          - os: windows-latest   # MSI / NSIS
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential \
+            curl wget file libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/tauri/src-tauri
+
+      - name: Build installers
+        uses: tauri-apps/tauri-action@v0
+        with:
+          projectPath: desktop/tauri
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aidirector-${{ matrix.os }}
+          path: |
+            desktop/tauri/src-tauri/target/release/bundle/**/*.msi
+            desktop/tauri/src-tauri/target/release/bundle/**/*.exe
+            desktop/tauri/src-tauri/target/release/bundle/**/*.AppImage
+            desktop/tauri/src-tauri/target/release/bundle/**/*.deb

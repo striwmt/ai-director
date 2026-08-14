@@ -99,7 +99,7 @@ NLE書き出しにも引き継がれます(FCPXMLタイトル / OTIOマーカー
 
 ```bash
 aidirector web            # → http://127.0.0.1:8484/
-aidirector app            # デスクトップモード: 空きポートで起動しブラウザを自動オープン
+aidirector app            # デスクトップモード: 独立したアプリウィンドウ(下記参照)
 ```
 
 ブラウザから作成(素材パス+プロンプト+設定を入力、フェーズ/ログの
@@ -115,6 +115,20 @@ aidirector app            # デスクトップモード: 空きポートで起�
 映像解析中にVRAMを占有せず、ポート上に既存サーバがあればそれを再利用
 します。Windows / Linux 両対応です(キャプションフォントとCUDAランタイム
 の解決はプラットフォーム別に行われます)。
+
+## デスクトップアプリ(Windows / Linux)
+
+`aidirector app` は**独立したアプリウィンドウ**(Chromiumのappモード —
+WindowsではEdge、他ではChrome/Chromium)を開きます。ウィンドウを閉じると
+バックエンドも終了します。新しいマシンでは1コマンドでセットアップできます:
+
+```bash
+python desktop/bootstrap.py     # uvを取得→環境構築→アプリ起動
+```
+
+`desktop/tauri` には本格的なインストーラ(MSI/NSIS、AppImage/deb)をCIで
+ビルドするためのTauri v2シェルテンプレートがあります —
+[desktop/README.md](desktop/README.md) 参照。
 
 ## Docker
 

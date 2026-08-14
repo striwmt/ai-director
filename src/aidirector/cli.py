@@ -262,7 +262,8 @@ def search(
 
 
 def _serve(
-    config: AppConfig, host: str, port: int, *, open_browser: bool
+    config: AppConfig, host: str, port: int, *,
+    open_browser: bool, window: bool = False,
 ) -> None:
     try:
         import uvicorn
@@ -281,12 +282,47 @@ def _serve(
 
     url = f"http://{host}:{port}/"
     typer.echo(f"AI Director UI: {url}")
+    application = create_app(config)
+
+    if window:
+        from .web.window import launch_app_window
+
+        # Serve in a thread; the app window's lifetime controls shutdown.
+        import threading
+        import time
+
+        server = uvicorn.Server(
+            uvicorn.Config(application, host=host, port=port, log_level="warning")
+        )
+        thread = threading.Thread(target=server.run, daemon=True)
+        thread.start()
+        deadline = time.time() + 15
+        while not server.started and time.time() < deadline:
+            time.sleep(0.1)
+
+        process = launch_app_window(url, config.paths.data_dir / "webview")
+        if process is None:
+            typer.echo("app-mode browser not found; opening a normal browser tab")
+            import webbrowser
+
+            webbrowser.open(url)
+            thread.join()
+            return
+        try:
+            process.wait()
+            typer.echo("window closed — shutting down")
+        except KeyboardInterrupt:
+            process.terminate()
+        server.should_exit = True
+        thread.join(timeout=10)
+        return
+
     if open_browser:
         import threading
         import webbrowser
 
         threading.Timer(1.0, webbrowser.open, [url]).start()
-    uvicorn.run(create_app(config), host=host, port=port, log_level="warning")
+    uvicorn.run(application, host=host, port=port, log_level="warning")
 
 
 @app.command()
@@ -304,13 +340,24 @@ def web(
 @app.command("app")
 def desktop_app(
     port: int = typer.Option(0, "--port", help="0 = pick a free port"),
+    window: Optional[bool] = typer.Option(
+        None, "--window/--no-window",
+        help="Standalone app window (Chromium app mode). Default: auto",
+    ),
     no_browser: bool = typer.Option(False, "--no-browser"),
     config_file: Optional[Path] = typer.Option(None, "--config"),
     log_level: Optional[str] = typer.Option(None, "--log-level"),
 ) -> None:
-    """Desktop mode: start the UI on a free port and open the browser."""
+    """Desktop mode: standalone app window (or browser) on a free port."""
     config = _setup(config_file, log_level)
-    _serve(config, "127.0.0.1", port, open_browser=not no_browser)
+    if window is None and not no_browser:
+        from .web.window import find_app_browser
+
+        window = find_app_browser() is not None
+    _serve(
+        config, "127.0.0.1", port,
+        open_browser=not no_browser, window=bool(window),
+    )
 
 
 def _load_plan(memory: MediaMemory, plan_id: str):
