@@ -67,11 +67,13 @@ def run_ingest(
     project_root: Path,
     *,
     color_override: ColorProfile | None = None,
+    project_name: str | None = None,
 ) -> IngestReport:
     ensure_dirs(config)
     detector = make_detector(config, project_root)
     return ingest_directory(
-        footage, config, memory, detector, color_override=color_override
+        footage, config, memory, detector,
+        color_override=color_override, project_name=project_name,
     )
 
 
@@ -129,6 +131,7 @@ async def run_analyze(
     project_root: Path,
     *,
     color_override: ColorProfile | None = None,
+    project_name: str | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> str:
     """Full analysis: ingest + deterministic prep + phased AI passes.
@@ -143,9 +146,15 @@ async def run_analyze(
 
     notify("ingest")
     run_ingest(
-        footage, config, memory, project_root, color_override=color_override
+        footage, config, memory, project_root,
+        color_override=color_override, project_name=project_name,
     )
-    project = memory.get_or_create_project(footage.resolve().name, footage.resolve())
+    project = memory.get_or_create_project(
+        project_name or footage.resolve().name, footage.resolve()
+    )
+    if project_name and project.name != project_name:
+        # Explicit name wins over whatever the project was called before.
+        memory.rename_project(project.id, project_name)
     registry = make_registry(config, project_root)
 
     assets = memory.list_assets(project.id, kind="video")
@@ -225,6 +234,7 @@ async def run_full_edit(
     subtitles: bool | None = None,
     canvas: str | None = None,
     color_override: ColorProfile | None = None,
+    project_name: str | None = None,
     render: bool = True,
     progress: Callable[[str], None] | None = None,
 ) -> tuple[str, Path | None]:
@@ -244,7 +254,8 @@ async def run_full_edit(
 
     project_id = await run_analyze(
         footage, config, memory, ai, project_root,
-        color_override=color_override, progress=progress,
+        color_override=color_override, project_name=project_name,
+        progress=progress,
     )
 
     notify("director")

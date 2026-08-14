@@ -45,6 +45,9 @@ class MediaMemory:
         ).fetchone()
         if row:
             return ProjectRecord(id=row["id"], name=row["name"], root_dir=row["root_dir"])
+        return self._create_project(name, root_dir)
+
+    def _create_project(self, name: str, root_dir: Path) -> ProjectRecord:
         project = ProjectRecord(id=f"prj_{uuid.uuid4().hex[:12]}", name=name, root_dir=str(root_dir))
         self.conn.execute(
             "INSERT INTO projects (id, name, root_dir) VALUES (?, ?, ?)",
@@ -89,6 +92,13 @@ class MediaMemory:
             ),
         )
         self.conn.commit()
+
+    def rename_project(self, project_id: str, name: str) -> bool:
+        cursor = self.conn.execute(
+            "UPDATE projects SET name = ? WHERE id = ?", (name, project_id)
+        )
+        self.conn.commit()
+        return cursor.rowcount > 0
 
     def set_asset_status(self, asset_id: str, status: str, error: str | None = None) -> None:
         self.conn.execute(
@@ -430,11 +440,14 @@ class MediaMemory:
         )
         self.conn.commit()
 
-    def save_edit_plan(self, run_id: str, plan_json: str, version: int = 1) -> str:
+    def save_edit_plan(
+        self, run_id: str, plan_json: str, version: int = 1, name: str | None = None
+    ) -> str:
         plan_id = f"plan_{uuid.uuid4().hex[:12]}"
         self.conn.execute(
-            "INSERT INTO edit_plans (id, run_id, version, plan_json) VALUES (?, ?, ?, ?)",
-            (plan_id, run_id, version, plan_json),
+            "INSERT INTO edit_plans (id, run_id, version, plan_json, name) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (plan_id, run_id, version, plan_json, name),
         )
         clips = json.loads(plan_json).get("clips", [])
         for idx, clip in enumerate(clips):
@@ -444,6 +457,19 @@ class MediaMemory:
             )
         self.conn.commit()
         return plan_id
+
+    def rename_plan(self, plan_id: str, name: str) -> bool:
+        cursor = self.conn.execute(
+            "UPDATE edit_plans SET name = ? WHERE id = ?", (name, plan_id)
+        )
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def get_plan_name(self, plan_id: str) -> str | None:
+        row = self.conn.execute(
+            "SELECT name FROM edit_plans WHERE id = ?", (plan_id,)
+        ).fetchone()
+        return row["name"] if row else None
 
     def get_edit_plan(self, plan_id: str) -> str | None:
         row = self.conn.execute(

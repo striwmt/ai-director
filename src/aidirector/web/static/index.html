@@ -153,6 +153,29 @@
   }
   #jobError { color:var(--danger); white-space:pre-wrap; font-size:13px; }
   .runbadge { color:var(--patina); font-size:12.5px; }
+  .selgroup { display:flex; align-items:center; gap:5px; }
+  .sellabel { font-size:11px; color:var(--muted); letter-spacing:.08em; }
+
+  /* directory browser modal */
+  .modal-bg {
+    position:fixed; inset:0; background:rgba(8,10,13,.66); z-index:40;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .modal-bg[hidden] { display:none; }
+  .modal {
+    width:min(560px, 92vw); background:var(--surface); border:1px solid var(--line);
+    border-radius:10px; padding:14px 16px; box-shadow:0 8px 32px rgba(0,0,0,.5);
+  }
+  .modal-head { font-size:12.5px; color:var(--muted); margin-bottom:8px;
+                overflow-wrap:anywhere; }
+  .dirlist { max-height:320px; overflow-y:auto; border:1px solid var(--line);
+             border-radius:6px; background:var(--surface2); }
+  .diritem { padding:6px 12px; cursor:pointer; font-size:13.5px;
+             border-bottom:1px solid var(--line); }
+  .diritem:last-child { border-bottom:none; }
+  .diritem:hover { background:var(--ground); color:var(--patina); }
+  .diritem .ico { color:var(--muted); margin-right:8px; }
+  .modal-foot { display:flex; align-items:center; gap:10px; margin-top:12px; }
   @keyframes pulse { 50% { opacity:.45; } }
   .runbadge.on { animation:pulse 1.6s ease-in-out infinite; }
   @media (prefers-reduced-motion: reduce){ .runbadge.on { animation:none; } }
@@ -161,8 +184,16 @@
 <body>
 <header>
   <h1>AI <span>Director</span></h1>
-  <select id="projectSel" title="プロジェクト"></select>
-  <select id="planSel" title="編集案"></select>
+  <span class="selgroup">
+    <span class="sellabel">プロジェクト</span>
+    <select id="projectSel" title="プロジェクト(素材フォルダ単位)"></select>
+    <button id="projRename" class="small" title="プロジェクト名を変更">✎</button>
+  </span>
+  <span class="selgroup">
+    <span class="sellabel">編集案</span>
+    <select id="planSel" title="編集案(保存するたびに新バージョン)"></select>
+    <button id="planRename" class="small" title="編集案の名前を変更">✎</button>
+  </span>
   <span class="total" id="total"></span>
   <span class="spacer"></span>
   <span class="runbadge" id="runBadge"></span>
@@ -185,11 +216,17 @@
     <div class="form">
       <label for="cfPath">素材パス</label>
       <div>
-        <input type="text" id="cfPath" list="pathHistory"
-               placeholder="/path/to/footage (Dockerでは /footage)">
+        <div style="display:flex; gap:6px;">
+          <input type="text" id="cfPath" list="pathHistory" style="flex:1"
+                 placeholder="/path/to/footage (Dockerでは /footage)">
+          <button id="browseBtn" type="button">参照…</button>
+        </div>
         <datalist id="pathHistory"></datalist>
         <div class="pathinfo" id="pathInfo"></div>
       </div>
+
+      <label for="cfProject">プロジェクト名</label>
+      <input type="text" id="cfProject" placeholder="(省略時はフォルダ名)">
 
       <label for="cfPrompt">指示</label>
       <textarea id="cfPrompt" placeholder="例: 雨の町を静かに歩く旅行Vlog。電車で到着し、川沿いを歩き、古い寺を訪ねる"></textarea>
@@ -256,6 +293,19 @@
   </section>
 </main>
 
+<div id="dirModal" class="modal-bg" hidden>
+  <div class="modal">
+    <div class="modal-head mono" id="dirPath"></div>
+    <div class="dirlist" id="dirList"></div>
+    <div class="modal-foot">
+      <span class="fname" id="dirInfo"></span>
+      <span class="spacer"></span>
+      <button id="dirCancel">キャンセル</button>
+      <button id="dirSelect" class="primary">このフォルダを選択</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const $ = id => document.getElementById(id);
 let projectId = null, planId = null;
@@ -279,15 +329,23 @@ async function api(path, opts){
   return res.json();
 }
 
-async function init(){
-  const state = await api("/api/state");
+let projectsCache = [];
+
+function fillProjects(projects, keepId){
+  projectsCache = projects;
   const sel = $("projectSel");
   sel.innerHTML = "";
-  for(const p of state.projects){
+  for(const p of projects){
     const o = document.createElement("option");
     o.value = p.id; o.textContent = p.name;
     sel.appendChild(o);
   }
+  if(keepId && projects.some(p => p.id === keepId)) sel.value = keepId;
+}
+
+async function init(){
+  const state = await api("/api/state");
+  fillProjects(state.projects);
   initCreate(state.projects);
   if(!state.projects.length){
     $("timeline").innerHTML = '<div class="empty">プロジェクトがありません。「+ 新規作成」から始めてください。</div>';
@@ -295,7 +353,7 @@ async function init(){
     return;
   }
   projectId = state.projects[0].id;
-  sel.onchange = () => { projectId = sel.value; loadProject(); };
+  $("projectSel").onchange = () => { projectId = $("projectSel").value; loadProject(); };
   await loadProject();
 }
 
@@ -306,7 +364,7 @@ async function loadProject(){
   for(const p of plans){
     const o = document.createElement("option");
     o.value = p.id;
-    o.textContent = `${p.id} (v${p.version})`;
+    o.textContent = `${p.name || p.id} (v${p.version})`;
     sel.appendChild(o);
   }
   sel.onchange = () => loadPlan(sel.value);
@@ -622,6 +680,87 @@ $("saveBtn").onclick = async () => {
   }catch(e){ note(""); alert("保存できません:\n" + e.message); }
 };
 
+// --- rename ------------------------------------------------------------
+
+$("projRename").onclick = async () => {
+  if(!projectId) return;
+  const current = projectsCache.find(p => p.id === projectId);
+  const name = prompt("プロジェクト名", current ? current.name : "");
+  if(!name || !name.trim()) return;
+  try{
+    await api(`/api/projects/${projectId}`, {
+      method:"PATCH", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({name: name.trim()}),
+    });
+    const state = await api("/api/state");
+    fillProjects(state.projects, projectId);
+    initCreate(state.projects);
+    note("プロジェクト名を変更しました");
+  }catch(e){ alert(e.message); }
+};
+
+$("planRename").onclick = async () => {
+  if(!planId) return;
+  const currentLabel = $("planSel").selectedOptions[0]?.textContent || "";
+  const name = prompt("編集案の名前", (plan && plan.name) || currentLabel.replace(/ \(v\d+\)$/, ""));
+  if(!name || !name.trim()) return;
+  try{
+    await api(`/api/plans/${planId}`, {
+      method:"PATCH", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({name: name.trim()}),
+    });
+    const keep = planId;
+    await loadProject();
+    $("planSel").value = keep; planId = keep;
+    note("編集案の名前を変更しました");
+  }catch(e){ alert(e.message); }
+};
+
+// --- directory browser ---------------------------------------------------
+
+let browsePath = null;
+
+async function loadDir(path){
+  try{
+    const res = await api(`/api/browse?path=${encodeURIComponent(path || "")}`);
+    browsePath = res.path;
+    $("dirPath").textContent = res.path;
+    $("dirInfo").textContent = res.video_count ? `このフォルダに動画 ${res.video_count} 本` : "";
+    const list = $("dirList");
+    list.innerHTML = "";
+    if(res.parent){
+      const up = document.createElement("div");
+      up.className = "diritem";
+      up.innerHTML = `<span class="ico">↩</span>..(上へ)`;
+      up.onclick = () => loadDir(res.parent);
+      list.appendChild(up);
+    }
+    for(const d of res.dirs){
+      const item = document.createElement("div");
+      item.className = "diritem";
+      item.innerHTML = `<span class="ico">📁</span>${d.name}`;
+      item.onclick = () => loadDir(d.path);
+      list.appendChild(item);
+    }
+    if(!res.dirs.length && !res.parent){
+      list.innerHTML = '<div class="diritem">(サブフォルダなし)</div>';
+    }
+  }catch(e){
+    $("dirInfo").textContent = e.message;
+  }
+}
+
+$("browseBtn").onclick = () => {
+  $("dirModal").hidden = false;
+  loadDir($("cfPath").value.trim());
+};
+$("dirCancel").onclick = () => { $("dirModal").hidden = true; };
+$("dirModal").onclick = e => { if(e.target === $("dirModal")) $("dirModal").hidden = true; };
+$("dirSelect").onclick = () => {
+  if(browsePath){ $("cfPath").value = browsePath; validatePath(); }
+  $("dirModal").hidden = true;
+};
+
 $("exportSel").onchange = () => {
   const format = $("exportSel").value;
   $("exportSel").value = "";
@@ -739,6 +878,7 @@ async function validatePath(){
 async function startCreate(){
   const body = {
     footage_path: $("cfPath").value.trim(),
+    project_name: $("cfProject").value.trim() || null,
     prompt: $("cfPrompt").value.trim(),
     duration: parseFloat($("cfDuration").value) || 60,
     profile: $("cfProfile").value || null,
@@ -803,19 +943,13 @@ function pollCreate(){
     if(st.status === "done" && st.plan_id){
       badge.textContent = "作成完了";
       const state = await api("/api/state");
-      const sel = $("projectSel");
-      sel.innerHTML = "";
-      for(const p of state.projects){
-        const o = document.createElement("option");
-        o.value = p.id; o.textContent = p.name;
-        sel.appendChild(o);
-      }
+      fillProjects(state.projects);
       initCreate(state.projects);
       // The new plan's project is whichever contains it — reload via plans.
       for(const p of state.projects){
         const { plans } = await api(`/api/projects/${p.id}/plans`);
         if(plans.some(x => x.id === st.plan_id)){
-          projectId = p.id; sel.value = p.id;
+          projectId = p.id; $("projectSel").value = p.id;
           await loadProject();
           await loadPlan(st.plan_id);
           break;

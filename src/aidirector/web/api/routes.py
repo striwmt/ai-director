@@ -62,7 +62,7 @@ def state(memory: MediaMemory = Depends(get_memory)) -> dict:
 def list_plans(project_id: str, memory: MediaMemory = Depends(get_memory)) -> dict:
     rows = memory.conn.execute(
         """
-        SELECT p.id, p.version, p.created_at, r.intent_json
+        SELECT p.id, p.version, p.name, p.created_at, r.intent_json
         FROM edit_plans p JOIN director_runs r ON r.id = p.run_id
         WHERE r.project_id = ?
         ORDER BY p.created_at DESC, p.rowid DESC
@@ -74,12 +74,39 @@ def list_plans(project_id: str, memory: MediaMemory = Depends(get_memory)) -> di
             {
                 "id": r["id"],
                 "version": r["version"],
+                "name": r["name"],
                 "created_at": r["created_at"],
                 "intent": json.loads(r["intent_json"]),
             }
             for r in rows
         ]
     }
+
+
+class RenameRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
+@router.patch("/projects/{project_id}")
+def rename_project(
+    project_id: str,
+    body: RenameRequest,
+    memory: MediaMemory = Depends(get_memory),
+) -> dict:
+    if not memory.rename_project(project_id, body.name.strip()):
+        raise HTTPException(404, f"project not found: {project_id}")
+    return {"id": project_id, "name": body.name.strip()}
+
+
+@router.patch("/plans/{plan_id}")
+def rename_plan(
+    plan_id: str,
+    body: RenameRequest,
+    memory: MediaMemory = Depends(get_memory),
+) -> dict:
+    if not memory.rename_plan(plan_id, body.name.strip()):
+        raise HTTPException(404, f"plan not found: {plan_id}")
+    return {"id": plan_id, "name": body.name.strip()}
 
 
 def _segment_info(memory: MediaMemory, segment_id: str) -> dict | None:
@@ -114,6 +141,7 @@ def get_plan(plan_id: str, memory: MediaMemory = Depends(get_memory)) -> dict:
         clips.append({"clip": clip.model_dump(), "segment": info})
     return {
         "id": plan_id,
+        "name": memory.get_plan_name(plan_id),
         "intent": plan.intent.model_dump(),
         "story": plan.story.model_dump(),
         "version": plan.version,
@@ -229,10 +257,11 @@ def save_plan(
         raise HTTPException(422, str(exc)) from exc
 
     row = memory.conn.execute(
-        "SELECT run_id FROM edit_plans WHERE id = ?", (plan_id,)
+        "SELECT run_id, name FROM edit_plans WHERE id = ?", (plan_id,)
     ).fetchone()
     new_id = memory.save_edit_plan(
-        row["run_id"], new_plan.model_dump_json(), version=new_plan.version
+        row["run_id"], new_plan.model_dump_json(),
+        version=new_plan.version, name=row["name"],
     )
     for item in body.feedback:
         memory.add_user_feedback(
@@ -295,6 +324,44 @@ def export_plan(
 # Creation (footage -> analyze -> director -> preview)
 
 
+@router.get("/browse")
+def browse_directories(
+    path: str = "",
+    config: AppConfig = Depends(get_config),
+) -> dict:
+    """List subdirectories for the footage picker (local tool, read-only)."""
+    directory = Path(path).expanduser() if path else Path.home()
+    try:
+        directory = directory.resolve()
+    except OSError:
+        raise HTTPException(422, f"invalid path: {path}")
+    if not directory.is_dir():
+        raise HTTPException(404, f"not a directory: {directory}")
+
+    # Non-recursive on purpose: browsing must stay instant even in huge
+    # trees (recursive counting is validate_footage's job on the final pick).
+    video_extensions = set(config.ingest.video_extensions)
+    subdirs = []
+    video_count = 0
+    try:
+        for entry in sorted(directory.iterdir(), key=lambda p: p.name.lower()):
+            if entry.name.startswith("."):
+                continue
+            if entry.is_dir():
+                subdirs.append({"name": entry.name, "path": str(entry)})
+            elif entry.suffix.lower() in video_extensions:
+                video_count += 1
+    except PermissionError:
+        raise HTTPException(403, f"permission denied: {directory}")
+    parent = str(directory.parent) if directory.parent != directory else None
+    return {
+        "path": str(directory),
+        "parent": parent,
+        "dirs": subdirs[:500],
+        "video_count": video_count,
+    }
+
+
 @router.get("/footage/validate")
 def validate_footage(
     path: str,
@@ -337,6 +404,7 @@ def list_profiles(config: AppConfig = Depends(get_config)) -> dict:
 
 class CreateRequest(BaseModel):
     footage_path: str
+    project_name: str | None = Field(default=None, max_length=120)
     prompt: str = ""
     duration: float = Field(default=60.0, gt=0, le=3600)
     profile: str | None = None
@@ -373,6 +441,7 @@ def start_create(
                     profile=body.profile, captions=body.captions,
                     caption_format=body.caption_format,
                     subtitles=body.subtitles or None, canvas=body.canvas,
+                    project_name=(body.project_name or "").strip() or None,
                     progress=progress,
                 )
             )

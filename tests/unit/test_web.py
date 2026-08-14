@@ -202,6 +202,78 @@ def test_export_endpoints(client, populated):
     assert client.get("/api/plans/plan_nope/export/fcpxml").status_code == 404
 
 
+def test_browse(client, tmp_path):
+    (tmp_path / "trip" / "day1").mkdir(parents=True)
+    (tmp_path / "trip" / "day2").mkdir()
+    (tmp_path / "trip" / ".hidden").mkdir()
+    (tmp_path / "trip" / "clip.MP4").write_bytes(b"")
+
+    res = client.get(f"/api/browse?path={tmp_path}/trip").json()
+    assert res["path"].endswith("/trip")
+    assert [d["name"] for d in res["dirs"]] == ["day1", "day2"]
+    assert res["video_count"] == 1
+    assert res["parent"] == str(tmp_path)
+
+    assert client.get(f"/api/browse?path={tmp_path}/nope").status_code == 404
+    # empty path falls back to home
+    assert client.get("/api/browse").status_code == 200
+
+
+def test_rename_project_and_plan(client, populated):
+    res = client.patch(
+        f"/api/projects/{populated['project_id']}", json={"name": "佐原の旅"}
+    )
+    assert res.status_code == 200
+    state = client.get("/api/state").json()
+    assert state["projects"][0]["name"] == "佐原の旅"
+
+    res = client.patch(
+        f"/api/plans/{populated['plan_id']}", json={"name": "雨の町 最終案"}
+    )
+    assert res.status_code == 200
+    plans = client.get(f"/api/projects/{populated['project_id']}/plans").json()
+    assert plans["plans"][0]["name"] == "雨の町 最終案"
+    plan = client.get(f"/api/plans/{populated['plan_id']}").json()
+    assert plan["name"] == "雨の町 最終案"
+
+    # renaming survives save-as-new-version
+    clips = [c["clip"] for c in plan["clips"]]
+    saved = client.post(
+        f"/api/plans/{populated['plan_id']}/save", json={"clips": clips}
+    ).json()
+    plans = client.get(f"/api/projects/{populated['project_id']}/plans").json()
+    v2 = next(p for p in plans["plans"] if p["id"] == saved["plan_id"])
+    assert v2["name"] == "雨の町 最終案"
+
+    assert client.patch("/api/projects/prj_nope", json={"name": "x"}).status_code == 404
+    assert client.patch("/api/plans/plan_nope", json={"name": "x"}).status_code == 404
+
+
+def test_create_accepts_project_name(client, tmp_path, monkeypatch):
+    import time
+
+    import aidirector.pipeline as pipeline_mod
+
+    footage = tmp_path / "f"
+    footage.mkdir()
+    seen = {}
+
+    async def fake_full_edit(*args, **kwargs):
+        seen["project_name"] = kwargs.get("project_name")
+        return "plan_named", None
+
+    monkeypatch.setattr(pipeline_mod, "run_full_edit", fake_full_edit)
+    res = client.post("/api/create", json={
+        "footage_path": str(footage), "prompt": "x", "project_name": "  夏の旅  ",
+    })
+    assert res.status_code == 200
+    for _ in range(50):
+        if client.get("/api/create/status").json()["status"] == "done":
+            break
+        time.sleep(0.05)
+    assert seen["project_name"] == "夏の旅"
+
+
 def test_footage_validate(client, tmp_path):
     footage = tmp_path / "clips"
     footage.mkdir()

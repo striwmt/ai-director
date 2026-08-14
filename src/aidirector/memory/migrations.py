@@ -137,6 +137,10 @@ _MIGRATIONS: list[str] = [
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     """,
+    # v2 — user-editable display name for edit plans
+    """
+    ALTER TABLE edit_plans ADD COLUMN name TEXT;
+    """,
 ]
 
 

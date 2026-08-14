@@ -347,7 +347,10 @@ async def run_director(
         want_subtitles = subtitles if subtitles is not None else config.output.subtitles
         if want_subtitles:
             plan = fill_subtitles(plan, memory)
-        plan_id = memory.save_edit_plan(run_id, plan.model_dump_json(), version=1)
+        plan_id = memory.save_edit_plan(
+            run_id, plan.model_dump_json(), version=1,
+            name=(story.concept or user_prompt or "").strip()[:60] or None,
+        )
         memory.finish_director_run(run_id, "done")
         log.info(
             "edit plan %s: %d clips, %.1fs total (prompt version %s)",
