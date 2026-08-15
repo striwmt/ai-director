@@ -5,6 +5,8 @@ Missing values are normal (AGENT.md §9).
 
 from __future__ import annotations
 
+import re
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -39,6 +41,10 @@ class MediaMetadata(BaseModel):
     audio_stream_count: int = 0
 
     creation_time: str | None = None
+    # SMPTE start timecode from the tmcd track, verbatim (e.g. "14:23:05:11").
+    # Whether it represents wall-clock time is decided by
+    # refined_creation_time, never assumed here.
+    timecode: str | None = None
     camera_make: str | None = None
     camera_model: str | None = None
     gps: str | None = None
@@ -82,6 +88,68 @@ class MediaMetadata(BaseModel):
         return size is not None and size[1] > size[0]
 
 
+_TIMECODE_RE = re.compile(r"^(\d{1,2}):(\d{2}):(\d{2})[:;.](\d{1,3})$")
+# creation_time may be the END of the recording on some cameras, plus a
+# little clock skew — the timecode must agree within duration + this.
+_TIMECODE_SLACK_SECONDS = 300.0
+
+
+def timecode_to_seconds(timecode: str | None, fps: float | None) -> float | None:
+    """SMPTE timecode -> seconds since midnight, or None if unparsable.
+
+    Frames convert via fps (30 assumed when unknown). Drop-frame values
+    (";" separator) are treated like non-drop: the label-vs-realtime gap
+    (~3.6s/hour) is far inside the tolerance this value is gated by.
+    """
+    if not timecode:
+        return None
+    match = _TIMECODE_RE.match(timecode.strip())
+    if not match:
+        return None
+    hours, minutes, seconds, frames = (int(g) for g in match.groups())
+    if hours > 23 or minutes > 59 or seconds > 59:
+        return None
+    rate = fps if fps and fps > 0 else 30.0
+    if frames >= max(rate, 1):
+        return None
+    return hours * 3600 + minutes * 60 + seconds + frames / rate
+
+
+def _parse_iso(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def refined_creation_time(metadata: MediaMetadata) -> str | None:
+    """creation_time refined to frame precision by the timecode — only when
+    the two clocks agree, so record-run timecodes (00:00:00:00 per take)
+    and timezone-shifted clocks are never mistaken for wall-clock time
+    (AGENT.md §2: code guarantees facts, doubtful values are dropped).
+
+    Cameras like the DJI Osmo Pocket 3 write an RTC-synced free-run
+    timecode; there the result is the exact recording START time even
+    when creation_time was stamped at the end of the recording.
+    Returns None whenever the refinement cannot be trusted.
+    """
+    created = _parse_iso(metadata.creation_time)
+    tc_seconds = timecode_to_seconds(metadata.timecode, metadata.fps)
+    if created is None or tc_seconds is None:
+        return None
+    midnight = created.replace(hour=0, minute=0, second=0, microsecond=0)
+    candidates = [
+        midnight + timedelta(days=day, seconds=tc_seconds) for day in (-1, 0, 1)
+    ]
+    best = min(candidates, key=lambda c: abs((c - created).total_seconds()))
+    tolerance = (metadata.duration or 0.0) + _TIMECODE_SLACK_SECONDS
+    if abs((best - created).total_seconds()) > tolerance:
+        return None
+    return best.isoformat()
+
+
 def extract_metadata(probe: ProbeResult, path: Path | None = None) -> MediaMetadata:
     video = probe.video_stream
     audios = probe.audio_streams
@@ -114,6 +182,7 @@ def extract_metadata(probe: ProbeResult, path: Path | None = None) -> MediaMetad
         audio_sample_rate=first_audio.sample_rate if first_audio else None,
         audio_stream_count=len(audios),
         creation_time=probe.creation_time,
+        timecode=probe.timecode,
         camera_make=probe.camera_make,
         camera_model=probe.camera_model,
         gps=probe.gps,

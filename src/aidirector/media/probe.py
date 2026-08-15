@@ -120,6 +120,11 @@ class ProbeResult(BaseModel):
         return self._tag("creation_time", "com.apple.quicktime.creationdate")
 
     @property
+    def timecode(self) -> str | None:
+        """SMPTE timecode (tmcd track / stream tag), e.g. "14:23:05:11"."""
+        return self._tag("timecode", "com.apple.quicktime.timecode")
+
+    @property
     def camera_make(self) -> str | None:
         return self._tag("make", "manufacturer", "com.apple.quicktime.make")
 

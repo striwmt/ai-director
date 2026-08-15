@@ -27,6 +27,9 @@ Footage → Media Ingest → Color Management → Perception → Media Memory
   times oldest-first (unless `chronology: flexible`) and drops second
   uses of the same source video (unless `duplicate_shots: allow`, e.g.
   the talk profile). AI judges meaning; code guarantees facts.
+  Recording times come from `creation_time`, refined to frame precision
+  by the SMPTE timecode (tmcd) when the two clocks agree —
+  `refined_creation_time` rejects record-run/untrusted timecodes.
 - **Coverage across re-creations**: per-beat retrieval over-fetches
   semantic hits and reserves half of each beat's candidate slots for the
   source videos least used by the project's saved plans

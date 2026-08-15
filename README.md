@@ -195,7 +195,10 @@ profiles like travel_vlog guarantee recording-time order and one clip per
 source video in code (cinematic keeps the AI's order for dramatic
 freedom; talk allows multiple cuts from one video). Only footage without
 recording-time metadata (creation_time) stays where the AI placed it,
-since there is no fact to sort it by.
+since there is no fact to sort it by. Embedded **timecode** (the tmcd
+track written by e.g. the DJI Osmo Pocket 3) is used too: when it agrees
+with the file's clock it becomes the frame-accurate recording start time
+(record-run timecodes are ignored automatically).
 
 **The same videos keep getting picked / some videos never appear** — a
 60-second edit only holds ~10-20 cuts, so a large library can never be

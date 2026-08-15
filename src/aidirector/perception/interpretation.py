@@ -106,6 +106,17 @@ def build_understanding(
     if asset and asset.metadata.display_size:
         orientation = "portrait" if asset.metadata.is_portrait else "landscape"
 
+    # Prefer the timecode-refined start time (frame-accurate, and correct
+    # even when creation_time was stamped at the END of the recording);
+    # refined_creation_time returns None unless the timecode is trustworthy.
+    from ..media.metadata import refined_creation_time
+
+    recording_start = None
+    if asset:
+        recording_start = (
+            refined_creation_time(asset.metadata) or asset.metadata.creation_time
+        )
+
     understanding = SegmentUnderstanding(
         segment_id=segment.id,
         asset_id=segment.asset_id,
@@ -113,9 +124,7 @@ def build_understanding(
         start=segment.start,
         end=segment.end,
         duration=segment.duration,
-        recorded_at=segment_recorded_at(
-            asset.metadata.creation_time if asset else None, segment.start
-        ),
+        recorded_at=segment_recorded_at(recording_start, segment.start),
         orientation=orientation,
         transcript=transcript_for_span(transcript, segment.start, segment.end),
     )

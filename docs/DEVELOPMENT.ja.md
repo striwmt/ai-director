@@ -27,6 +27,9 @@ Footage → Media Ingest → Color Management → Perception → Media Memory
   (`chronology: flexible` 時を除く)、同じ元動画の2回目以降の使用は削除
   (`duplicate_shots: allow`、例: talkプロファイル時を除く)。
   AIは意味を判断、コードは事実を保証。
+  撮影時刻は `creation_time` 由来で、SMPTEタイムコード(tmcd)が時計と
+  整合する場合は `refined_creation_time` がフレーム精度に高精度化します
+  (record-run等の信用できないタイムコードは棄却)。
 - **作り直しでの素材網羅**: beatごとの候補検索はセマンティック検索結果を
   多めに取得し、候補枠の半分を「保存済みプランでの使用回数が最も少ない
   元動画」(`asset_usage_counts`)に割り当てます。何度も作り直すたびに
