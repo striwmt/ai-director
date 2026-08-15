@@ -21,7 +21,7 @@
 |---|---|
 | OS | Windows 10/11 または Linux |
 | GPU | NVIDIA GPU(VRAM 16GB推奨、例: RTX 5060 Ti)。無くても動きますが低速です |
-| ディスク | AIモデル用に約20GBの空き |
+| ディスク | AIモデル用に約35GBの空き |
 | ffmpeg | 動画処理に必須(下記参照) |
 
 ## インストール
@@ -61,13 +61,15 @@ python desktop/bootstrap.py
 
 ### AIディレクター用LLMについて
 
-編集判断を行うLLM(Qwen3-8B)はllama.cppで動きます。既定設定では**必要な
-ときだけ自動で起動・終了**します(初回はモデル約5GBを自動ダウンロード)。
-そのため**llama.cppの導入が必要**です — Windowsなら
-`winget install ggml.llamacpp`、Linuxは[公式リリース](https://github.com/ggml-org/llama.cpp/releases)から。
-自分でOpenAI互換サーバを動かしたい場合は `config/models.yaml` の `director`
-を `provider: openai-compatible` に変更してください(ポート8102で既に
-サーバが動いていれば、既定設定のままでもそれを再利用します)。
+編集判断を行うLLM(Qwen3-8B)は、映像理解などの他のAIモデルと同じように
+**アプリ内へ自動ダウンロード・ロード**されます(初回約16GB、4bit量子化で
+実行)。追加ソフトの導入は不要です。
+
+生成をより速くしたい場合はllama.cppを導入し(Windows:
+`winget install ggml.llamacpp`、Linux: [公式リリース](https://github.com/ggml-org/llama.cpp/releases))、
+`config/models.yaml` の `director` を `provider: llama-server` にすると、
+量子化済みモデル(約5GB)のサーバを必要なときだけ自動起動・終了します。
+自前のOpenAI互換サーバを使う場合は `provider: openai-compatible` です。
 
 ## 使い方
 
@@ -160,9 +162,10 @@ Chrome/Edge/Chromiumが見つからない場合は通常のブラウザタブで
 `aidirector app --no-window` で最初からブラウザ表示にできます。
 
 **Q. 編集立案フェーズで失敗する(「llama-server binary not found」/「cannot reach the LLM server」)**
-編集判断のLLMにはllama.cppが必要です(上記「AIディレクター用LLMについて」参照)。
-`winget install ggml.llamacpp`(Windows)などで導入すると、以降は自動で起動します。
-素材の解析結果は保存済みなので、そのまま作り直せば立案から再開されます。
+既定設定なら追加ソフト不要で動きます。このエラーは `config/models.yaml` の
+`director` を `llama-server` / `openai-compatible` に変更している場合のもので、
+llama.cppの導入(または対象サーバの起動)が必要です。素材の解析結果は
+保存済みなので、そのまま作り直せば立案から再開されます。
 
 **Q. 編集案の質がいまいち**
 指示を具体的に(見せたい順番・雰囲気・残したい場面)。素材が多いほど、また

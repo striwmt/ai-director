@@ -23,7 +23,16 @@ speech = [
     "nvidia-cublas-cu12; sys_platform == 'linux'",
     "nvidia-cudnn-cu12>=9,<10; sys_platform == 'linux'",
 ]
-vision = ["transformers>=4.44", "torch>=2.3", "torchvision", "pillow>=10.0", "accelerate>=0.30"]
+# bitsandbytes: 4-bit NF4 for the in-process director LLM (and any other
+# local model configured with extra.quantization: 4bit).
+vision = [
+    "transformers>=4.44",
+    "torch>=2.3",
+    "torchvision",
+    "pillow>=10.0",
+    "accelerate>=0.30",
+    "bitsandbytes>=0.45",
+]
 embedding = [
     "transformers>=4.44",
     "torch>=2.3",

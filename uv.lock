@@ -66,6 +66,7 @@ speech = [
 ]
 vision = [
     { name = "accelerate" },
+    { name = "bitsandbytes" },
     { name = "pillow" },
     { name = "torch" },
     { name = "torchvision" },
@@ -87,6 +88,7 @@ requires-dist = [
     { name = "accelerate", marker = "extra == 'music'", specifier = ">=0.30" },
     { name = "accelerate", marker = "extra == 'vision'", specifier = ">=0.30" },
     { name = "bitsandbytes", marker = "extra == 'music'", specifier = ">=0.45" },
+    { name = "bitsandbytes", marker = "extra == 'vision'", specifier = ">=0.45" },
     { name = "fastapi", marker = "extra == 'web'", specifier = ">=0.110" },
     { name = "faster-whisper", marker = "extra == 'speech'", specifier = ">=1.0" },
     { name = "httpx", specifier = ">=0.27" },

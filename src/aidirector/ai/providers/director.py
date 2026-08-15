@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import gc
 import json
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import TypeVar
+from typing import Any, TypeVar
 from urllib.parse import urlparse
 
 import httpx
@@ -92,6 +93,158 @@ class OpenAICompatibleDirectorProvider:
                     continue
                 raise
 
+            try:
+                data = extract_json_object(content)
+                return response_model.model_validate(data)
+            except (ValidationError, Exception) as exc:
+                last_error = exc
+                log.warning(
+                    "structured output invalid (attempt %d/%d): %s",
+                    attempt, _MAX_ATTEMPTS, exc,
+                )
+                chat.append({"role": "assistant", "content": content})
+                chat.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "The previous response failed validation with this error:\n"
+                            f"{exc}\n"
+                            "Return ONLY the corrected JSON object."
+                        ),
+                    }
+                )
+
+        raise StructuredOutputError(
+            f"failed to produce valid {response_model.__name__} "
+            f"after {_MAX_ATTEMPTS} attempts: {last_error}"
+        )
+
+
+def _strip_thinking(text: str) -> str:
+    """Drop a leading <think>...</think> block (Qwen3-style models)."""
+    marker = "</think>"
+    index = text.rfind(marker)
+    return text[index + len(marker):] if index != -1 else text
+
+
+class TransformersDirectorProvider:
+    """In-process director LLM via HuggingFace transformers.
+
+    Loads exactly like the vision/music models: weights auto-download to
+    the HF cache, the model lives in this process and is phase-evicted by
+    the runtime manager — no external server or binary required.
+    ``extra.quantization: 4bit`` (bitsandbytes NF4) fits an 8B model in a
+    16 GB GPU. Slower at generation than llama.cpp on the same hardware;
+    ``provider: llama-server`` remains the faster option.
+    """
+
+    def __init__(self, cfg: ModelEndpointConfig) -> None:
+        self._cfg = cfg
+        self._model: Any = None
+        self._tokenizer: Any = None
+        self.name = f"transformers:{cfg.model}"
+
+    async def load(self) -> None:
+        if self._model is not None:
+            return
+        await asyncio.to_thread(self._load_sync)
+
+    def _load_sync(self) -> None:
+        try:
+            import torch
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+        except ImportError as exc:
+            raise ProviderError(
+                "transformers/torch not installed. Install with: uv sync --extra vision"
+            ) from exc
+
+        device = self._cfg.device
+        if device == "auto":
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        kwargs: dict[str, Any] = {
+            "dtype": torch.bfloat16 if device == "cuda" else torch.float32,
+            "device_map": device,
+        }
+        if self._cfg.extra.get("quantization") == "4bit" and device == "cuda":
+            try:
+                from transformers import BitsAndBytesConfig
+
+                kwargs["quantization_config"] = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_compute_dtype=torch.bfloat16,
+                )
+                kwargs.pop("dtype")
+            except ImportError as exc:
+                raise ProviderError(
+                    "bitsandbytes not installed. Install with: uv sync --extra vision"
+                ) from exc
+        self._tokenizer = AutoTokenizer.from_pretrained(self._cfg.model)
+        self._model = AutoModelForCausalLM.from_pretrained(
+            self._cfg.model, **kwargs
+        ).eval()
+        log.info("loaded director LLM %s on %s", self._cfg.model, device)
+
+    async def unload(self) -> None:
+        self._model = None
+        self._tokenizer = None
+        gc.collect()
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except ImportError:
+            pass
+
+    def _generate_sync(self, chat: list[dict], thinking: bool) -> str:
+        import torch
+
+        text = self._tokenizer.apply_chat_template(
+            chat, add_generation_prompt=True, tokenize=False,
+            enable_thinking=thinking,
+        )
+        inputs = self._tokenizer([text], return_tensors="pt").to(self._model.device)
+        with torch.no_grad():
+            output = self._model.generate(
+                **inputs,
+                max_new_tokens=int(self._cfg.extra.get("max_new_tokens", 4096)),
+                do_sample=True, temperature=0.4, top_p=0.9,
+            )
+        new_tokens = output[:, inputs["input_ids"].shape[1]:]
+        decoded = self._tokenizer.batch_decode(
+            new_tokens, skip_special_tokens=True
+        )[0]
+        return _strip_thinking(decoded).strip()
+
+    async def generate_structured(
+        self,
+        messages: list[Message],
+        response_model: type[T],
+        *,
+        thinking: bool | None = None,
+    ) -> T:
+        if self._model is None:
+            await self.load()
+        schema_text = json.dumps(
+            response_model.model_json_schema(), ensure_ascii=False
+        )
+        chat: list[dict] = [{"role": m.role, "content": m.content} for m in messages]
+        chat.append(
+            {
+                "role": "system",
+                "content": (
+                    "Respond with a single JSON object matching this JSON schema, "
+                    "with no extra commentary:\n" + schema_text
+                ),
+            }
+        )
+
+        last_error: Exception | None = None
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
+            content = await asyncio.to_thread(
+                self._generate_sync, chat, bool(thinking)
+            )
             try:
                 data = extract_json_object(content)
                 return response_model.model_validate(data)

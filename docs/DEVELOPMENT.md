@@ -41,7 +41,7 @@ Reference model set (verified on RTX 5060 Ti 16GB):
 | Role | Model | Provider |
 |---|---|---|
 | Vision | Qwen3-VL-4B-Instruct | `transformers` (bf16) |
-| Director | Qwen3-8B Q4_K_M | `llama-server` (managed) or `openai-compatible` |
+| Director | Qwen3-8B (NF4 4-bit, in-process) | `transformers` (default), `llama-server` (managed, faster) or `openai-compatible` |
 | Embedding | Qwen3-VL-Embedding-2B | `sentence-transformers` |
 | Speech | faster-whisper large-v3-turbo | `faster-whisper` |
 | Music embedding | CLAP (laion/clap-htsat-unfused) | `transformers` |
@@ -65,11 +65,13 @@ project dependency): `uv pip install essentia==2.1b6.dev1389` upgrades
 BPM/key extraction; it is detected and preferred automatically.
 
 Model endpoints live in `config/models.yaml`; never hardcode model names
-in code. The default director provider is `llama-server`: the runtime
-starts and stops a llama.cpp server around the director phase (llama.cpp
-must be installed), reusing an already-healthy server on the port. To run
-the server yourself instead, set `provider: openai-compatible` +
-`base_url` and start it with:
+in code. The default director provider is `transformers`: Qwen3-8B loads
+in-process (bitsandbytes NF4) exactly like the other local models — no
+external software. For faster generation install llama.cpp and set
+`provider: llama-server` (the runtime starts/stops the server around the
+director phase, reusing an already-healthy server on the port), or run
+any OpenAI-compatible server yourself (`provider: openai-compatible` +
+`base_url`), e.g.:
 
 ```bash
 llama-server -hf Qwen/Qwen3-8B-GGUF:Q4_K_M --port 8102 -ngl 99 \

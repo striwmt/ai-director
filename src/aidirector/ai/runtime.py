@@ -56,6 +56,10 @@ def _make_director_provider(cfg: ModelEndpointConfig) -> Any:
         from .providers.director import LlamaServerDirectorProvider
 
         return LlamaServerDirectorProvider(cfg)
+    if cfg.provider == "transformers":
+        from .providers.director import TransformersDirectorProvider
+
+        return TransformersDirectorProvider(cfg)
     raise ProviderError(f"unknown director provider: {cfg.provider}")
 
 

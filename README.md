@@ -26,7 +26,7 @@ local AI that understands your material and drafts the edit for you.**
 |---|---|
 | OS | Windows 10/11 or Linux |
 | GPU | NVIDIA GPU (16 GB VRAM recommended, e.g. RTX 5060 Ti). Works CPU-only, but slowly |
-| Disk | ~20 GB free for AI models |
+| Disk | ~35 GB free for AI models |
 | ffmpeg | Required for all media processing (see below) |
 
 ## Install
@@ -69,15 +69,16 @@ python desktop/bootstrap.py
 
 ### About the Director LLM
 
-Editing decisions are made by a local LLM (Qwen3-8B) running on llama.cpp.
-By default AI Director **starts and stops the server automatically**
-exactly when it is needed (the ~5 GB model downloads itself on first use),
-so **llama.cpp must be installed**: `winget install ggml.llamacpp` on
-Windows, or the
-[official releases](https://github.com/ggml-org/llama.cpp/releases) on Linux.
-Prefer to run your own OpenAI-compatible server? Set the `director` to
-`provider: openai-compatible` in `config/models.yaml` (a server already
-running on port 8102 is reused as-is even with the default config).
+Editing decisions are made by a local LLM (Qwen3-8B). By default it
+**downloads and loads in-process exactly like the other AI models**
+(~16 GB on first use, run in 4-bit) — no extra software needed.
+
+For faster generation, install llama.cpp (`winget install ggml.llamacpp`
+on Windows, [official releases](https://github.com/ggml-org/llama.cpp/releases)
+on Linux) and set the `director` to `provider: llama-server` in
+`config/models.yaml`: AI Director then starts and stops a server with the
+quantized model (~5 GB) exactly when it is needed. To run your own
+OpenAI-compatible server, use `provider: openai-compatible`.
 
 ## How to use
 
@@ -176,10 +177,11 @@ forbids bundling them). Without one, a neutral fallback is used.
 normal browser tab; force that with `aidirector app --no-window`.
 
 **The drafting phase fails ("llama-server binary not found" / "cannot
-reach the LLM server")** — the director LLM needs llama.cpp installed
-(see *About the Director LLM* above), e.g. `winget install ggml.llamacpp`.
-Analysis results are already saved, so just re-create and it resumes at
-the drafting step.
+reach the LLM server")** — the default setup needs no extra software;
+these errors only appear when `director` in `config/models.yaml` was
+switched to `llama-server` / `openai-compatible`, which need llama.cpp
+installed or your server running. Analysis results are already saved, so
+just re-create and it resumes at the drafting step.
 
 **Draft quality is so-so** — be specific in the prompt (order, mood, what
 must stay). More footage and intact recording-time metadata both help.

@@ -107,12 +107,11 @@ class ModelsConfig(BaseModel):
         provider="transformers", model="Qwen/Qwen3-VL-4B-Instruct",
         device="auto",
     )
-    # Managed llama.cpp server: started/stopped around the director phase;
-    # reuses (and leaves running) an already-healthy server on the port.
+    # In-process like the other local models (auto-download, phase-evicted).
+    # provider: llama-server (managed llama.cpp) is the faster alternative.
     director: ModelEndpointConfig = ModelEndpointConfig(
-        provider="llama-server", model="Qwen/Qwen3-8B-GGUF:Q4_K_M",
-        context_length=16384,
-        extra={"binary": "llama-server", "port": 8102, "startup_timeout": 900},
+        provider="transformers", model="Qwen/Qwen3-8B",
+        context_length=16384, extra={"quantization": "4bit"},
     )
     speech: ModelEndpointConfig = ModelEndpointConfig(
         provider="faster-whisper", model="large-v3-turbo",

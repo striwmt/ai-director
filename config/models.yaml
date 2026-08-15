@@ -9,27 +9,34 @@ models:
     model: Qwen/Qwen3-VL-4B-Instruct
     device: auto
 
-  # Two ways to run the Director LLM:
+  # Three ways to run the Director LLM:
   #
-  # (a) llama-server (default) — AI Director starts/stops the server itself
-  #     around the director phase (never holds VRAM during vision analysis).
-  #     Requires llama.cpp on PATH (winget install ggml.llamacpp). Reuses an
-  #     already-running server on the port if one exists, so an externally
-  #     managed server on 8102 keeps working as before.
+  # (a) transformers (default) — loads in-process like the other local
+  #     models: auto-download to the HF cache, no extra software. 4-bit
+  #     NF4 keeps an 8B model well inside 16 GB. Slower generation than
+  #     llama.cpp on the same GPU.
   #
-  # (b) openai-compatible — you run any OpenAI-compatible server yourself:
+  # (b) llama-server — faster. AI Director starts/stops a llama.cpp server
+  #     itself around the director phase; requires llama.cpp installed
+  #     (winget install ggml.llamacpp). Reuses an already-running server
+  #     on the port:
+  #       director:
+  #         provider: llama-server
+  #         model: Qwen/Qwen3-8B-GGUF:Q4_K_M    # -hf ref, or a local .gguf path
+  #         context_length: 16384
+  #         extra: { binary: llama-server, port: 8102, startup_timeout: 900 }
+  #
+  # (c) openai-compatible — you run any OpenAI-compatible server yourself:
   #       director:
   #         provider: openai-compatible
   #         base_url: http://127.0.0.1:8102/v1
   #         model: qwen3-8b-q4
   #         context_length: 16384
-  #     e.g.: llama-server -hf Qwen/Qwen3-8B-GGUF:Q4_K_M --port 8102 -ngl 99 \
-  #             -c 16384 -fa on --jinja --reasoning-budget 0
   director:
-    provider: llama-server
-    model: Qwen/Qwen3-8B-GGUF:Q4_K_M      # -hf ref, or a local .gguf path
+    provider: transformers
+    model: Qwen/Qwen3-8B
     context_length: 16384
-    extra: { binary: llama-server, port: 8102, startup_timeout: 900 }
+    extra: { quantization: 4bit }
 
   speech:
     provider: faster-whisper

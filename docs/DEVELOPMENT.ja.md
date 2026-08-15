@@ -40,7 +40,7 @@ Footage → Media Ingest → Color Management → Perception → Media Memory
 | 役割 | モデル | Provider |
 |---|---|---|
 | 映像理解 | Qwen3-VL-4B-Instruct | `transformers`(bf16) |
-| Director | Qwen3-8B Q4_K_M | `llama-server`(自動管理)or `openai-compatible` |
+| Director | Qwen3-8B(NF4 4bit・インプロセス) | `transformers`(既定)、`llama-server`(自動管理・高速)or `openai-compatible` |
 | Embedding | Qwen3-VL-Embedding-2B | `sentence-transformers` |
 | 音声認識 | faster-whisper large-v3-turbo | `faster-whisper` |
 | 楽曲embedding | CLAP(laion/clap-htsat-unfused) | `transformers` |
@@ -64,11 +64,13 @@ uv sync --extra music        # + BGM解析(librosa、CLAP、音声LLM)
 します(導入されていれば自動検出して優先利用)。
 
 モデルのエンドポイントは `config/models.yaml` で設定します(コードへの
-ハードコード禁止)。directorの既定providerは `llama-server` で、ランタイム
-がdirectorフェーズの前後でllama.cppサーバを起動・終了します(llama.cpp
-の導入が必要。ポート上に既に健全なサーバがあればそれを再利用)。外部の
-OpenAI互換サーバを自分で動かす場合は `provider: openai-compatible` +
-`base_url` に変更し、次のように起動します:
+ハードコード禁止)。directorの既定providerは `transformers` で、Qwen3-8Bを
+他のローカルモデルと同じくインプロセスでロードします(bitsandbytes NF4、
+外部ソフト不要)。より高速にするにはllama.cppを導入して
+`provider: llama-server`(ランタイムがdirectorフェーズの前後でサーバを
+起動・終了。ポート上に既に健全なサーバがあれば再利用)、または外部の
+OpenAI互換サーバを自分で動かして `provider: openai-compatible` +
+`base_url` を設定します:
 
 ```bash
 llama-server -hf Qwen/Qwen3-8B-GGUF:Q4_K_M --port 8102 -ngl 99 \
