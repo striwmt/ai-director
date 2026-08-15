@@ -183,6 +183,13 @@ switched to `llama-server` / `openai-compatible`, which need llama.cpp
 installed or your server running. Analysis results are already saved, so
 just re-create and it resumes at the drafting step.
 
+**Clips are out of shooting order / the same video appears twice** —
+profiles like travel_vlog guarantee recording-time order and one clip per
+source video in code (cinematic keeps the AI's order for dramatic
+freedom; talk allows multiple cuts from one video). Only footage without
+recording-time metadata (creation_time) stays where the AI placed it,
+since there is no fact to sort it by.
+
 **Draft quality is so-so** — be specific in the prompt (order, mood, what
 must stay). More footage and intact recording-time metadata both help.
 

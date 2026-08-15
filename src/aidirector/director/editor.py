@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 from ..ai.schemas import Message
 from ..ai.services import AIServices
 from ..logging import get_logger
-from ..perception.interpretation import SegmentUnderstanding
+from ..perception.interpretation import SegmentUnderstanding, parse_creation_time
 from .prompts import load_prompt
 from .schemas import BeatPlan, SequenceClip, SequencePlan, StoryPlan
 
@@ -51,6 +53,71 @@ def clamp_sequence(
         clip.source_out = round(source_out, 3)
         repaired.append(clip)
     return SequencePlan(clips=repaired) if repaired else plan
+
+
+def _clip_wallclock(
+    clip: SequenceClip, segment: SegmentUnderstanding | None
+) -> datetime | None:
+    """Absolute capture time of a clip's first frame, if the asset is dated."""
+    if segment is None:
+        return None
+    base = parse_creation_time(segment.recorded_at)
+    if base is None:
+        return None
+    return base + timedelta(seconds=clip.source_in - segment.start)
+
+
+def sort_chronologically(
+    plan: SequencePlan,
+    segments_by_id: dict[str, SegmentUnderstanding],
+) -> SequencePlan:
+    """Deterministic chronology guarantee (AGENT.md §2): recording times are
+    facts, so the prompt's "respect real chronology" is enforced in code.
+
+    Clips with a known capture time are reordered oldest-first; clips
+    without one keep their original slots (the AI placed them by meaning,
+    and there is no fact to sort them by).
+    """
+    timed: list[tuple[int, datetime]] = []
+    for index, clip in enumerate(plan.clips):
+        moment = _clip_wallclock(clip, segments_by_id.get(clip.segment_id))
+        if moment is not None:
+            timed.append((index, moment))
+    if len(timed) < 2:
+        return plan
+    clips = list(plan.clips)
+    slots = [index for index, _ in timed]
+    ordered = sorted(timed, key=lambda pair: pair[1])
+    if [index for index, _ in ordered] != slots:
+        log.info("reordered %d clips into recording-time order", len(slots))
+    for slot, (source_index, _) in zip(slots, ordered):
+        clips[slot] = plan.clips[source_index]
+    return SequencePlan(clips=clips)
+
+
+def dedupe_assets(
+    plan: SequencePlan,
+    segments_by_id: dict[str, SegmentUnderstanding],
+) -> SequencePlan:
+    """One clip per source video, keeping the first occurrence.
+
+    The revision loop runs after this, so the director can extend other
+    clips to make up dropped duration.
+    """
+    seen: set[str] = set()
+    kept: list[SequenceClip] = []
+    for clip in plan.clips:
+        segment = segments_by_id.get(clip.segment_id)
+        asset_id = segment.asset_id if segment else clip.segment_id
+        if asset_id in seen:
+            log.info(
+                "dropping second use of source video %s (segment %s)",
+                segment.asset_name if segment else asset_id, clip.segment_id,
+            )
+            continue
+        seen.add(asset_id)
+        kept.append(clip)
+    return SequencePlan(clips=kept) if kept else plan
 
 
 def enforce_target_duration(
@@ -111,6 +178,7 @@ async def edit_sequence(
     selections_text: str,
     segments_by_id: dict[str, SegmentUnderstanding],
     revision_notes: str = "",
+    constraints: str = "",
 ) -> SequencePlan:
     notes = (
         f"## Revision required — fix these issues from the previous draft\n{revision_notes}"
@@ -122,6 +190,7 @@ async def edit_sequence(
         beats_json=beats.model_dump_json(),
         selections=selections_text,
         revision_notes=notes,
+        constraints=constraints,
     )
     plan = await ai.generate_structured(
         [Message(role="user", content=prompt)], SequencePlan

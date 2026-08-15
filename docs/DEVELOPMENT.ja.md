@@ -21,6 +21,12 @@ Footage → Media Ingest → Color Management → Perception → Media Memory
 - **Media Memory**: すべての観測結果(メタデータ、セグメント、文字起こし、
   VLM解析、embedding、テクニカル特徴、provenance)をSQLiteに永続化して検索。
   ディレクターはピクセルではなく記憶に対して推論します。
+- **決定的なシーケンス保証**: directorプロファイルの `chronology` /
+  `duplicate_shots` 設定はプロンプトへの助言にとどまらず、ドラフト生成の
+  たびにコードが強制します — 撮影時刻が分かるクリップは古い順に並べ替え
+  (`chronology: flexible` 時を除く)、同じ元動画の2回目以降の使用は削除
+  (`duplicate_shots: allow`、例: talkプロファイル時を除く)。
+  AIは意味を判断、コードは事実を保証。
 - **モデルは交換可能**: vision / director / speech / embedding /
   music_embedding / music_understanding は `config/models.yaml` で設定する
   Provider interfaceの背後にあり、ビジネスロジックはモデルライブラリを

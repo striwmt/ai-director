@@ -21,6 +21,12 @@ Footage → Media Ingest → Color Management → Perception → Media Memory
 - **Media Memory**: every observation (metadata, segments, transcripts,
   VLM analysis, embeddings, technical features, provenance) is persisted
   in SQLite and queried — the director reasons over memory, not pixels.
+- **Deterministic sequence guarantees**: the director profiles'
+  `chronology` and `duplicate_shots` preferences are not just prompt
+  advice — after every draft, code reorders clips with known recording
+  times oldest-first (unless `chronology: flexible`) and drops second
+  uses of the same source video (unless `duplicate_shots: allow`, e.g.
+  the talk profile). AI judges meaning; code guarantees facts.
 - **Replaceable models**: vision / director / speech / embedding /
   music-embedding / music-understanding sit behind provider interfaces
   configured in `config/models.yaml`. Business logic never imports model

@@ -15,6 +15,7 @@ Respect real chronology when recording times are given: do not show an
 evening shot before a morning shot from the same day unless the story
 demands it. Avoid cutting between portrait (vertical) and landscape
 segments back-to-back; group same-orientation shots when both exist.
+{constraints}
 
 {selections}
 

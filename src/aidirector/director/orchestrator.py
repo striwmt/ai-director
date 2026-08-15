@@ -19,7 +19,13 @@ from ..memory.search import MediaSearch
 from ..perception.interpretation import SegmentUnderstanding, build_understanding
 from .beat_planner import plan_beats
 from .critic import critique_edit
-from .editor import describe_selection, edit_sequence, enforce_target_duration
+from .editor import (
+    dedupe_assets,
+    describe_selection,
+    edit_sequence,
+    enforce_target_duration,
+    sort_chronologically,
+)
 from .music import (
     annotate_tracks,
     list_music_tracks,
@@ -245,6 +251,21 @@ async def run_director(
         beats = await plan_beats(ai, story=story, target_duration=target_duration)
         log.info("beats: %s", [(b.name, b.duration) for b in beats.beats])
 
+        # Profile preferences with a deterministic guarantee (AGENT.md §2):
+        # the prompts advise the LLM, these flags make code enforce it.
+        # chronology: strict/preferred -> sort by recording time; flexible ->
+        # the AI's order stands. duplicate_shots: allow -> a source video may
+        # be cut into several clips (talk profile); anything else -> one
+        # clip per source video.
+        enforce_chronology = (
+            profile.preferences.get("chronology", "preferred") != "flexible"
+        )
+        reuse_allowed = profile.preferences.get("duplicate_shots", "avoid") == "allow"
+        segments_of_asset: dict[str, list[str]] = {}
+        if not reuse_allowed:
+            for segment in memory.list_project_segments(project_id):
+                segments_of_asset.setdefault(segment.asset_id, []).append(segment.id)
+
         # 3+4. Per-beat retrieval and selection
         used: list[SegmentUnderstanding] = []
         used_ids: set[str] = set()
@@ -267,6 +288,11 @@ async def run_director(
             ]
             used.extend(chosen)
             used_ids.update(c.segment_id for c in chosen)
+            if not reuse_allowed:
+                # Exclude every other segment of the chosen source videos
+                # from later retrieval, so no video appears twice.
+                for c in chosen:
+                    used_ids.update(segments_of_asset.get(c.asset_id, []))
             selections.append((selection, chosen))
             log.info(
                 "beat '%s': %d/%d candidates chosen",
@@ -283,6 +309,18 @@ async def run_director(
                 selections_text_parts.append(describe_selection(u))
         selections_text = "\n".join(selections_text_parts)
 
+        constraint_lines: list[str] = []
+        if not reuse_allowed:
+            constraint_lines.append(
+                "Use at most ONE clip from each source file — never reuse a "
+                "source video, even for a different moment."
+            )
+        if enforce_chronology:
+            constraint_lines.append(
+                "Order ALL clips strictly by recording time, oldest first."
+            )
+        constraints = "\n".join(constraint_lines)
+
         revision_notes = ""
         sequence: SequencePlan | None = None
         best: tuple[float, SequencePlan] | None = None  # (fitness, plan)
@@ -295,7 +333,14 @@ async def run_director(
                 selections_text=selections_text,
                 segments_by_id=segments_by_id,
                 revision_notes=revision_notes,
+                constraints=constraints,
             )
+            # Deterministic guarantees before the critic sees the draft, so
+            # revision rounds compensate for any dropped/moved clips.
+            if not reuse_allowed:
+                sequence = dedupe_assets(sequence, segments_by_id)
+            if enforce_chronology:
+                sequence = sort_chronologically(sequence, segments_by_id)
             critique = await critique_edit(
                 ai,
                 story=story,
