@@ -9,6 +9,7 @@ from __future__ import annotations
 from ..ai.schemas import Message
 from ..ai.services import AIServices
 from ..logging import get_logger
+from ..memory.models import SegmentRecord
 from ..memory.repository import MediaMemory
 from ..memory.search import MediaSearch
 from ..perception.interpretation import SegmentUnderstanding, build_understanding
@@ -16,6 +17,33 @@ from .prompts import load_prompt
 from .schemas import Beat, BeatSelection, StoryPlan
 
 log = get_logger("director.selector")
+
+# Retrieval over-fetch factor: extra semantic hits give the freshness
+# re-rank something to choose from.
+_OVERFETCH = 3
+
+
+def diversify_candidates(
+    segments: list[SegmentRecord],
+    usage_counts: dict[str, int],
+    limit: int,
+) -> list[SegmentRecord]:
+    """Coverage guarantee across re-creations (deterministic, no AI).
+
+    The best semantic matches keep the first half of the slots; the other
+    half goes to the least-used source videos among the remaining hits
+    (ties keep semantic order), so footage that no saved plan has used
+    yet keeps entering the candidate pool.
+    """
+    if len(segments) <= limit:
+        return segments[:limit]
+    reserved = limit // 2
+    top = segments[: limit - reserved]
+    rest = sorted(
+        segments[limit - reserved:],
+        key=lambda s: usage_counts.get(s.asset_id, 0),
+    )
+    return top + rest[:reserved]
 
 
 async def retrieve_candidates(
@@ -27,19 +55,21 @@ async def retrieve_candidates(
     *,
     limit: int,
     exclude: set[str],
+    usage_counts: dict[str, int] | None = None,
 ) -> list[SegmentUnderstanding]:
     query = " ".join(
         part for part in (beat.name, beat.purpose, story.concept, story.tone) if part
     )
     hits = await search.search(
-        project_id, query, limit=limit, exclude_segment_ids=exclude
+        project_id, query, limit=limit * _OVERFETCH, exclude_segment_ids=exclude
     )
-    candidates: list[SegmentUnderstanding] = []
-    for hit in hits:
-        segment = memory.get_segment(hit.segment_id)
-        if segment is None:
-            continue
-        candidates.append(build_understanding(segment, memory))
+    segments = [memory.get_segment(hit.segment_id) for hit in hits]
+    chosen = diversify_candidates(
+        [s for s in segments if s is not None], usage_counts or {}, limit
+    )
+    candidates: list[SegmentUnderstanding] = [
+        build_understanding(segment, memory) for segment in chosen
+    ]
 
     # Fallback: with no retrieval signal (e.g. no embeddings and no keyword
     # hits) offer unused segments in chronological order so the director can

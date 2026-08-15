@@ -27,6 +27,11 @@ Footage → Media Ingest → Color Management → Perception → Media Memory
   times oldest-first (unless `chronology: flexible`) and drops second
   uses of the same source video (unless `duplicate_shots: allow`, e.g.
   the talk profile). AI judges meaning; code guarantees facts.
+- **Coverage across re-creations**: per-beat retrieval over-fetches
+  semantic hits and reserves half of each beat's candidate slots for the
+  source videos least used by the project's saved plans
+  (`asset_usage_counts`), so repeatedly re-creating explores the whole
+  library instead of resurfacing the same favorites.
 - **Replaceable models**: vision / director / speech / embedding /
   music-embedding / music-understanding sit behind provider interfaces
   configured in `config/models.yaml`. Business logic never imports model

@@ -190,6 +190,13 @@ freedom; talk allows multiple cuts from one video). Only footage without
 recording-time metadata (creation_time) stays where the AI placed it,
 since there is no fact to sort it by.
 
+**The same videos keep getting picked / some videos never appear** — a
+60-second edit only holds ~10-20 cuts, so a large library can never be
+fully used in one draft. But each re-creation gives priority candidate
+slots to the footage your saved plans have used least, so repeated
+drafts explore the whole library. Want more footage in one video?
+Raise the target duration.
+
 **Draft quality is so-so** — be specific in the prompt (order, mood, what
 must stay). More footage and intact recording-time metadata both help.
 

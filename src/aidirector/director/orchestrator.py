@@ -266,7 +266,10 @@ async def run_director(
             for segment in memory.list_project_segments(project_id):
                 segments_of_asset.setdefault(segment.asset_id, []).append(segment.id)
 
-        # 3+4. Per-beat retrieval and selection
+        # 3+4. Per-beat retrieval and selection. usage_counts steers half of
+        # each beat's candidate slots toward footage past plans never used,
+        # so re-creating explores the whole library over time.
+        usage_counts = memory.asset_usage_counts(project_id)
         used: list[SegmentUnderstanding] = []
         used_ids: set[str] = set()
         selections: list[tuple[BeatSelection, list[SegmentUnderstanding]]] = []
@@ -275,6 +278,7 @@ async def run_director(
             candidates = await retrieve_candidates(
                 search, memory, project_id, beat, story,
                 limit=config.director.candidates_per_beat, exclude=used_ids,
+                usage_counts=usage_counts,
             )
             for c in candidates:
                 segments_by_id[c.segment_id] = c

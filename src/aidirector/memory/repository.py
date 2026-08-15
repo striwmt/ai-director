@@ -556,6 +556,40 @@ class MediaMemory:
         ).fetchone()
         return (row["id"], row["plan_json"]) if row else None
 
+    def asset_usage_counts(self, project_id: str) -> dict[str, int]:
+        """How many saved edit plans use each asset (any plan version counts).
+
+        Powers candidate diversification: on later runs, never/least-used
+        footage gets reserved candidate slots so the whole library is
+        explored across re-creations.
+        """
+        rows = self.conn.execute(
+            """
+            SELECT p.plan_json FROM edit_plans p
+            JOIN director_runs r ON r.id = p.run_id
+            WHERE r.project_id = ?
+            """,
+            (project_id,),
+        ).fetchall()
+        segment_to_asset = {
+            s.id: s.asset_id for s in self.list_project_segments(project_id)
+        }
+        counts: dict[str, int] = {}
+        for row in rows:
+            try:
+                clips = json.loads(row["plan_json"]).get("clips", [])
+            except (json.JSONDecodeError, AttributeError):
+                continue
+            assets = {
+                segment_to_asset.get(clip.get("segment_id"))
+                for clip in clips
+                if isinstance(clip, dict)
+            }
+            assets.discard(None)
+            for asset_id in assets:
+                counts[asset_id] = counts.get(asset_id, 0) + 1
+        return counts
+
     def add_user_feedback(
         self, plan_id: str, action: str, decision_idx: int | None = None,
         reason: str | None = None,
