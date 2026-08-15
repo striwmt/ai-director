@@ -49,6 +49,13 @@ async def chat_completion(
 
     try:
         response = await client.post("/chat/completions", json=payload)
+    except httpx.ConnectError as exc:
+        raise ProviderError(
+            f"cannot reach the LLM server at {client.base_url} ({exc}). "
+            "Is it running? For the director, set provider: llama-server in "
+            "config/models.yaml to have AI Director start it automatically "
+            "(requires llama.cpp installed)."
+        ) from exc
     except httpx.HTTPError as exc:
         raise ProviderError(f"chat completion request failed: {exc}") from exc
     if response.status_code >= 400:

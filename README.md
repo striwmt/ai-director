@@ -70,11 +70,14 @@ python desktop/bootstrap.py
 ### About the Director LLM
 
 Editing decisions are made by a local LLM (Qwen3-8B) running on llama.cpp.
-With `provider: llama-server` in `config/models.yaml`, AI Director
-**starts and stops the server automatically** exactly when it is needed
-(the ~5 GB model downloads itself on first use). Install llama.cpp via
-`winget install ggml.llamacpp` on Windows or the
+By default AI Director **starts and stops the server automatically**
+exactly when it is needed (the ~5 GB model downloads itself on first use),
+so **llama.cpp must be installed**: `winget install ggml.llamacpp` on
+Windows, or the
 [official releases](https://github.com/ggml-org/llama.cpp/releases) on Linux.
+Prefer to run your own OpenAI-compatible server? Set the `director` to
+`provider: openai-compatible` in `config/models.yaml` (a server already
+running on port 8102 is reused as-is even with the default config).
 
 ## How to use
 
@@ -171,6 +174,12 @@ forbids bundling them). Without one, a neutral fallback is used.
 
 **No app window opens** — without Chrome/Edge/Chromium it falls back to a
 normal browser tab; force that with `aidirector app --no-window`.
+
+**The drafting phase fails ("llama-server binary not found" / "cannot
+reach the LLM server")** — the director LLM needs llama.cpp installed
+(see *About the Director LLM* above), e.g. `winget install ggml.llamacpp`.
+Analysis results are already saved, so just re-create and it resumes at
+the drafting step.
 
 **Draft quality is so-so** — be specific in the prompt (order, mood, what
 must stay). More footage and intact recording-time metadata both help.

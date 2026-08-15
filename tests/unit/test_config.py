@@ -17,8 +17,9 @@ def test_defaults_without_files(tmp_path):
 def test_repo_config_loads():
     config = load_config(project_root=PROJECT_ROOT)
     assert config.director.default_profile == "travel_vlog"
-    assert config.models.director.provider == "openai-compatible"
+    assert config.models.director.provider == "llama-server"
     assert config.models.director.context_length == 16384
+    assert config.models.director.extra["port"] == 8102
 
 
 def test_explicit_file_overrides(tmp_path):

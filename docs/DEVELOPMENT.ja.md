@@ -64,14 +64,16 @@ uv sync --extra music        # + BGM解析(librosa、CLAP、音声LLM)
 します(導入されていれば自動検出して優先利用)。
 
 モデルのエンドポイントは `config/models.yaml` で設定します(コードへの
-ハードコード禁止)。外部のOpenAI互換directorサーバを使う場合:
+ハードコード禁止)。directorの既定providerは `llama-server` で、ランタイム
+がdirectorフェーズの前後でllama.cppサーバを起動・終了します(llama.cpp
+の導入が必要。ポート上に既に健全なサーバがあればそれを再利用)。外部の
+OpenAI互換サーバを自分で動かす場合は `provider: openai-compatible` +
+`base_url` に変更し、次のように起動します:
 
 ```bash
 llama-server -hf Qwen/Qwen3-8B-GGUF:Q4_K_M --port 8102 -ngl 99 \
   -c 16384 -fa on --jinja --reasoning-budget 0
 ```
-
-または `provider: llama-server` でランタイムにプロセス管理を任せます。
 
 ## CLIリファレンス
 

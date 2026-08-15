@@ -65,14 +65,16 @@ project dependency): `uv pip install essentia==2.1b6.dev1389` upgrades
 BPM/key extraction; it is detected and preferred automatically.
 
 Model endpoints live in `config/models.yaml`; never hardcode model names
-in code. An external OpenAI-compatible director server can be started with:
+in code. The default director provider is `llama-server`: the runtime
+starts and stops a llama.cpp server around the director phase (llama.cpp
+must be installed), reusing an already-healthy server on the port. To run
+the server yourself instead, set `provider: openai-compatible` +
+`base_url` and start it with:
 
 ```bash
 llama-server -hf Qwen/Qwen3-8B-GGUF:Q4_K_M --port 8102 -ngl 99 \
   -c 16384 -fa on --jinja --reasoning-budget 0
 ```
-
-or use `provider: llama-server` and let the runtime manage the process.
 
 ## CLI reference
 

@@ -61,10 +61,13 @@ python desktop/bootstrap.py
 
 ### AIディレクター用LLMについて
 
-編集判断を行うLLM(Qwen3-8B)はllama.cppで動きます。`config/models.yaml` の
-`director` を `provider: llama-server` にしておくと、**必要なときだけ自動で
-起動・終了**します(初回はモデル約5GBを自動ダウンロード)。llama.cppの導入は
-Windowsなら `winget install ggml.llamacpp`、Linuxは[公式リリース](https://github.com/ggml-org/llama.cpp/releases)から。
+編集判断を行うLLM(Qwen3-8B)はllama.cppで動きます。既定設定では**必要な
+ときだけ自動で起動・終了**します(初回はモデル約5GBを自動ダウンロード)。
+そのため**llama.cppの導入が必要**です — Windowsなら
+`winget install ggml.llamacpp`、Linuxは[公式リリース](https://github.com/ggml-org/llama.cpp/releases)から。
+自分でOpenAI互換サーバを動かしたい場合は `config/models.yaml` の `director`
+を `provider: openai-compatible` に変更してください(ポート8102で既に
+サーバが動いていれば、既定設定のままでもそれを再利用します)。
 
 ## 使い方
 
@@ -155,6 +158,11 @@ LUT(.cube)をダウンロードして `assets/luts/` に置いてください(�
 **Q. アプリウィンドウが開かない**
 Chrome/Edge/Chromiumが見つからない場合は通常のブラウザタブで開きます。
 `aidirector app --no-window` で最初からブラウザ表示にできます。
+
+**Q. 編集立案フェーズで失敗する(「llama-server binary not found」/「cannot reach the LLM server」)**
+編集判断のLLMにはllama.cppが必要です(上記「AIディレクター用LLMについて」参照)。
+`winget install ggml.llamacpp`(Windows)などで導入すると、以降は自動で起動します。
+素材の解析結果は保存済みなので、そのまま作り直せば立案から再開されます。
 
 **Q. 編集案の質がいまいち**
 指示を具体的に(見せたい順番・雰囲気・残したい場面)。素材が多いほど、また

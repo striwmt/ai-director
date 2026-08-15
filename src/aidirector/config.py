@@ -107,9 +107,12 @@ class ModelsConfig(BaseModel):
         provider="transformers", model="Qwen/Qwen3-VL-4B-Instruct",
         device="auto",
     )
+    # Managed llama.cpp server: started/stopped around the director phase;
+    # reuses (and leaves running) an already-healthy server on the port.
     director: ModelEndpointConfig = ModelEndpointConfig(
-        provider="openai-compatible", model="qwen3-8b-q4",
-        base_url="http://127.0.0.1:8102/v1", context_length=16384,
+        provider="llama-server", model="Qwen/Qwen3-8B-GGUF:Q4_K_M",
+        context_length=16384,
+        extra={"binary": "llama-server", "port": 8102, "startup_timeout": 900},
     )
     speech: ModelEndpointConfig = ModelEndpointConfig(
         provider="faster-whisper", model="large-v3-turbo",
