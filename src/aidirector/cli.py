@@ -49,6 +49,13 @@ def _parse_override(color_profile: str) -> ColorProfile | None:
     return None if profile == ColorProfile.UNKNOWN else profile
 
 
+def _parse_flow(flow: str | None) -> list[str] | None:
+    from .director.beat_planner import parse_outline
+
+    outline = parse_outline(flow)
+    return outline or None
+
+
 @app.command()
 def version() -> None:
     """Show version."""
@@ -167,6 +174,13 @@ def edit(
         None, "--music-dir",
         help="Folder of BGM candidates (.mp3/.wav/.m4a); the AI picks one",
     ),
+    flow: Optional[str] = typer.Option(
+        None, "--flow",
+        help=(
+            "Required story flow, in order — the beats follow it verbatim. "
+            'Separators: "," "、" "→" (e.g. "出発,電車移動,レストラン")'
+        ),
+    ),
     no_preview: bool = typer.Option(False, "--no-preview", help="Skip preview rendering"),
     config_file: Optional[Path] = typer.Option(None, "--config"),
     log_level: Optional[str] = typer.Option(None, "--log-level"),
@@ -188,6 +202,7 @@ def edit(
                 captions=captions, caption_format=caption_format,
                 subtitles=subtitles or None,
                 music_dir=music_dir,
+                outline=_parse_flow(flow),
                 canvas=canvas, color_override=_parse_override(color_profile),
                 render=not no_preview,
             )

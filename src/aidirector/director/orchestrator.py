@@ -223,14 +223,17 @@ async def run_director(
     caption_format: str | None = None,
     subtitles: bool | None = None,
     music_dir: Path | None = None,
+    outline: list[str] | None = None,
 ) -> tuple[str, EditPlan]:
     """Run the full director pipeline. Returns (plan_id, edit_plan)."""
     profile_name = profile_name or config.director.default_profile
     profile: DirectorProfile = load_director_profile(
         config.director.profiles_dir, profile_name
     )
+    outline = outline or []
     intent = EditPlanIntent(
-        target_duration=target_duration, profile=profile_name, user_prompt=user_prompt
+        target_duration=target_duration, profile=profile_name,
+        user_prompt=user_prompt, outline=outline,
     )
     run_id = memory.create_director_run(project_id, intent.model_dump())
     search = MediaSearch(memory, ai)
@@ -238,17 +241,26 @@ async def run_director(
     try:
         # 1. Story
         summary = build_project_summary(memory, project_id)
+        story_prompt = user_prompt
+        if outline:
+            story_prompt = (
+                f"{user_prompt}\n\nRequired story flow, in this exact order: "
+                + " → ".join(outline)
+            ).strip()
         story = await plan_story(
             ai,
-            user_prompt=user_prompt,
+            user_prompt=story_prompt,
             target_duration=target_duration,
             profile=profile,
             project_summary=summary,
         )
         log.info("story: %s (tone=%s, arc=%s)", story.concept, story.tone, story.story_arc)
 
-        # 2. Beats
-        beats = await plan_beats(ai, story=story, target_duration=target_duration)
+        # 2. Beats — a user outline becomes the beat structure verbatim
+        # (enforce_outline guarantees names and order in code).
+        beats = await plan_beats(
+            ai, story=story, target_duration=target_duration, outline=outline or None,
+        )
         log.info("beats: %s", [(b.name, b.duration) for b in beats.beats])
 
         # Profile preferences with a deterministic guarantee (AGENT.md §2):
@@ -344,7 +356,12 @@ async def run_director(
             if not reuse_allowed:
                 sequence = dedupe_assets(sequence, segments_by_id)
             if enforce_chronology:
-                sequence = sort_chronologically(sequence, segments_by_id)
+                # A user outline is authoritative for the overall order;
+                # chronology then only applies within each flow section.
+                sequence = sort_chronologically(
+                    sequence, segments_by_id,
+                    group_order=[b.name for b in beats.beats] if outline else None,
+                )
             critique = await critique_edit(
                 ai,
                 story=story,

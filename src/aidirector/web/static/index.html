@@ -110,8 +110,13 @@
   video { width:100%; border-radius:6px; background:#000; display:block; }
   #renderState { color:var(--muted); font-size:12.5px; margin:6px 0 14px; }
   #memory { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
-  .mem { background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:6px; cursor:pointer; }
+  .mem { background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:6px; cursor:pointer; position:relative; }
   .mem:hover { border-color:var(--patina); }
+  .mem .playbtn { position:absolute; top:10px; right:10px; width:26px; height:26px;
+    border-radius:50%; border:none; background:rgba(0,0,0,.55); color:#fff;
+    font-size:11px; cursor:pointer; opacity:0; transition:opacity .15s; }
+  .mem:hover .playbtn { opacity:1; }
+  .mem .playbtn:hover { background:rgba(0,0,0,.8); }
   .mem img { width:100%; border-radius:3px; display:block; background:#000; }
   .mem .t { font-size:11.5px; color:var(--muted); margin-top:4px;
             display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
@@ -292,6 +297,10 @@
       <label for="cfPrompt">指示</label>
       <textarea id="cfPrompt" placeholder="例: 雨の町を静かに歩く旅行Vlog。電車で到着し、川沿いを歩き、古い寺を訪ねる"></textarea>
 
+      <label for="cfFlow">流れ(任意)</label>
+      <textarea id="cfFlow" rows="2"
+                placeholder="動画の構成をこの順で固定します。「,」「、」「→」または改行区切り&#10;例: 出発 → 電車移動 → レストラン → ワイナリー1 → ワイナリー2 → 徒歩 → 電車移動"></textarea>
+
       <label>設定</label>
       <div class="inline">
         <span><label for="cfDuration">目標尺</label>
@@ -381,6 +390,19 @@
       <span class="spacer"></span>
       <button id="mlAnalyze" type="button">このフォルダを解析</button>
       <button id="mlClose" type="button">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<div id="videoModal" class="modal-bg" hidden>
+  <div class="modal" style="width:min(880px, 94vw);">
+    <div class="modal-head mono" id="vmTitle"></div>
+    <video id="vmPlayer" controls playsinline preload="metadata"
+           style="width:100%; max-height:70vh; background:#000; border-radius:6px;"></video>
+    <div class="modal-foot">
+      <span class="fname" id="vmRange"></span>
+      <span class="spacer"></span>
+      <button id="vmClose" type="button">閉じる</button>
     </div>
   </div>
 </div>
@@ -664,6 +686,7 @@ function clipCard(entry, i){
   const ops = document.createElement("div");
   ops.className = "ops";
   ops.innerHTML = `
+    <button class="small" data-k="play" title="この動画をプレビュー再生">▶</button>
     <button class="small" data-k="up" title="上へ" ${i===0?"disabled":""}>↑</button>
     <button class="small" data-k="down" title="下へ" ${i===plan.clips.length-1?"disabled":""}>↓</button>
     <button class="small" data-k="del" title="除外">✕</button>`;
@@ -700,6 +723,8 @@ function clipCard(entry, i){
       markFeedback("replace", i, "caption added"); renderTimeline();
     };
   }
+  ops.querySelector('[data-k=play]').onclick = () =>
+    openVideoPreview({...s, segment_id: c.segment_id}, c.source_in);
   ops.querySelector('[data-k=up]').onclick = () => move(i, -1);
   ops.querySelector('[data-k=down]').onclick = () => move(i, +1);
   ops.querySelector('[data-k=del]').onclick = () => {
@@ -879,9 +904,14 @@ async function loadMemory(){
     const d = document.createElement("div");
     d.className = "mem";
     d.innerHTML = `<img loading="lazy" src="${seg.thumb}" alt="">
+      <button class="playbtn" type="button" title="この動画をプレビュー再生">▶</button>
       <div class="m mono">${fmt(seg.seg_end-seg.seg_start)}s ・ ${seg.asset_name}</div>
       <div class="t">${seg.description||"(解析なし)"}</div>`;
     d.onclick = () => addFromMemory(seg);
+    d.querySelector(".playbtn").onclick = e => {
+      e.stopPropagation();
+      openVideoPreview(seg);
+    };
     grid.appendChild(d);
   }
 }
@@ -1113,6 +1143,37 @@ $("musicModal").onclick = e => {
   if(e.target === $("musicModal")) $("mlClose").onclick();
 };
 
+// --- per-video preview modal ------------------------------------------
+
+function openVideoPreview(seg, startAt){
+  const v = $("vmPlayer");
+  $("vmTitle").textContent = seg.asset_name || seg.segment_id || "";
+  $("vmRange").textContent =
+    `セグメント ${fmt(seg.seg_start ?? 0)}–${fmt(seg.seg_end ?? 0)}s から再生` +
+    "(動画全体をシークできます)";
+  $("videoModal").hidden = false;
+  const t = startAt ?? seg.seg_start ?? 0;
+  v.onloadedmetadata = () => {
+    try{ v.currentTime = Math.min(t, Math.max(0, v.duration - 0.1)); }catch(_){}
+    v.play().catch(()=>{});
+  };
+  v.src = seg.video || `/api/segments/${seg.segment_id}/video.mp4`;
+}
+function closeVideoPreview(){
+  const v = $("vmPlayer");
+  v.pause();
+  v.removeAttribute("src");
+  v.load();
+  $("videoModal").hidden = true;
+}
+$("vmClose").onclick = closeVideoPreview;
+$("videoModal").onclick = e => {
+  if(e.target === $("videoModal")) closeVideoPreview();
+};
+document.addEventListener("keydown", e => {
+  if(e.key === "Escape" && !$("videoModal").hidden) closeVideoPreview();
+});
+
 $("exportSel").onchange = () => {
   const format = $("exportSel").value;
   $("exportSel").value = "";
@@ -1238,6 +1299,7 @@ async function startCreate(){
     caption_format: $("cfCaptions").value === "none" ? null : $("cfCapFmt").value,
     subtitles: $("cfSubtitles").checked,
     music_path: $("cfMusic").value.trim() || null,
+    flow: $("cfFlow").value.trim() || null,
     canvas: $("cfCanvas").value,
   };
   if(!body.footage_path){ alert("素材パスを入力してください"); return; }

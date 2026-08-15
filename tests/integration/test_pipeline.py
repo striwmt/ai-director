@@ -86,6 +86,27 @@ async def test_full_pipeline(footage_dir, config, memory, mock_ai):
     assert output.is_file() and output.stat().st_size > 10_000
 
 
+async def test_director_with_user_outline(footage_dir, config, memory, mock_ai):
+    project_id = await run_analyze(
+        footage_dir, config, memory, mock_ai, PROJECT_ROOT
+    )
+    outline = ["出発", "電車移動", "レストラン"]
+    plan_id, plan = await run_director(
+        project_id, config, memory, mock_ai,
+        user_prompt="旅の一日", target_duration=10.0,
+        profile_name="travel_vlog", outline=outline,
+    )
+    assert plan.intent.outline == outline
+    assert plan.clips, "plan has clips"
+    # Every clip serves one of the user's flow sections, in flow order.
+    beats_used = [c.story_beat for c in plan.clips]
+    assert set(beats_used) <= set(outline)
+    positions = [outline.index(b) for b in beats_used]
+    assert positions == sorted(positions), "clips follow the user's flow order"
+    assert json.loads(memory.get_edit_plan(plan_id))["intent"]["outline"] == outline
+    validate_edit_plan(plan, memory)
+
+
 async def test_full_pipeline_with_music(footage_dir, music_dir, config, memory, mock_ai):
     from aidirector.media.probe import probe_file
 

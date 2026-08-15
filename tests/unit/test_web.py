@@ -84,6 +84,28 @@ def test_segments_and_thumb(client, populated):
     assert missing.status_code == 404
 
 
+def test_segment_video_endpoint(client, populated, memory, tmp_path):
+    # No proxy and the original path doesn't exist -> 404.
+    missing = client.get("/api/segments/seg_a/video.mp4")
+    assert missing.status_code == 404
+
+    # With an analysis proxy on disk the segment becomes playable.
+    proxy = tmp_path / "proxy.mp4"
+    proxy.write_bytes(b"\x00" * 64)
+    segment = memory.get_segment("seg_a")
+    memory.save_color_transform(
+        segment.asset_id, "analysis", None, None, True, str(proxy)
+    )
+    ok = client.get("/api/segments/seg_a/video.mp4")
+    assert ok.status_code == 200
+    assert ok.headers["content-type"] == "video/mp4"
+
+    # The segment listing links to the video.
+    segs = client.get(f"/api/projects/{populated['project_id']}/segments").json()
+    seg_a = next(s for s in segs["segments"] if s["segment_id"] == "seg_a")
+    assert seg_a["video"] == "/api/segments/seg_a/video.mp4"
+
+
 def test_save_creates_new_version(client, populated):
     plan = client.get(f"/api/plans/{populated['plan_id']}").json()
     clips = [c["clip"] for c in plan["clips"]]

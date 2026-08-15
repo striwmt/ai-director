@@ -9,3 +9,5 @@ You are an experienced video editor turning a story plan into a time structure.
 - 4-7 beats. The first beat is a short hook (3-8s) that presents the
   atmosphere immediately. The last beat is the ending.
 - Each beat needs a clear purpose an editor can act on.
+
+{outline}

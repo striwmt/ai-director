@@ -172,6 +172,7 @@ def _segment_info(memory: MediaMemory, segment_id: str) -> dict | None:
         "recorded_at": u.recorded_at,
         "orientation": u.orientation,
         "thumb": f"/api/segments/{segment.id}/thumb.jpg",
+        "video": f"/api/segments/{segment.id}/video.mp4",
     }
 
 
@@ -215,6 +216,30 @@ def segment_thumb(segment_id: str, memory: MediaMemory = Depends(get_memory)):
         if path.is_file():
             return FileResponse(path, media_type="image/jpeg")
     raise HTTPException(404, "no frame available")
+
+
+@router.api_route("/segments/{segment_id}/video.mp4", methods=["GET", "HEAD"])
+def segment_video(
+    segment_id: str,
+    memory: MediaMemory = Depends(get_memory),
+):
+    """Browser-playable source video for a segment's asset.
+
+    Serves the 540p analysis proxy when present (original codecs like
+    H.265 often don't play in browsers); falls back to the original file.
+    Range requests are handled by FileResponse, so seeking works.
+    """
+    segment = memory.get_segment(segment_id)
+    if segment is None:
+        raise HTTPException(404, f"segment not found: {segment_id}")
+    proxy = memory.get_analysis_proxy(segment.asset_id)
+    path = Path(proxy) if proxy else None
+    if path is None or not path.is_file():
+        asset = memory.get_asset(segment.asset_id)
+        path = Path(asset.path) if asset else None
+    if path is None or not path.is_file():
+        raise HTTPException(404, "no playable file for this segment")
+    return FileResponse(path, media_type="video/mp4")
 
 
 @router.get("/segments/{segment_id}/frame.jpg")
@@ -469,6 +494,8 @@ class CreateRequest(BaseModel):
     subtitles: bool = False
     music_path: str | None = None
     canvas: str | None = None
+    # Free text; parsed with parse_outline (one per line or , 、 → separators)
+    flow: str | None = None
 
 
 @router.post("/create")
@@ -486,6 +513,9 @@ def start_create(
         music_dir = Path(body.music_path.strip()).expanduser()
         if not music_dir.is_dir():
             raise HTTPException(422, f"BGMディレクトリが見つかりません: {music_dir}")
+    from ...director.beat_planner import parse_outline
+
+    outline = parse_outline(body.flow) or None
 
     def work(progress) -> str:
         import asyncio
@@ -505,7 +535,7 @@ def start_create(
                     profile=body.profile, captions=body.captions,
                     caption_format=body.caption_format,
                     subtitles=body.subtitles or None, music_dir=music_dir,
-                    canvas=body.canvas,
+                    outline=outline, canvas=body.canvas,
                     project_name=(body.project_name or "").strip() or None,
                     progress=progress,
                 )

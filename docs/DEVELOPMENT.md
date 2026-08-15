@@ -96,7 +96,8 @@ aidirector ingest ./footage [--color-profile dji-dlog2]
 aidirector analyze ./footage            # segments, ASR, VLM, embeddings
 aidirector edit ./footage --duration 90 --profile travel_vlog \
     --prompt "..." --captions beats --caption-format "{HH}:{MM} {PLACE}" \
-    --subtitles --canvas landscape --music-dir ./bgm
+    --subtitles --canvas landscape --music-dir ./bgm \
+    --flow "出発,電車移動,レストラン"   # beats follow this order verbatim
 aidirector music-analyze ./bgm          # pre-analyze a BGM library (cached)
 aidirector search ./footage "夕焼け"     # semantic search over media memory
 aidirector preview <plan-id|latest> [--canvas ...]

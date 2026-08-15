@@ -126,6 +126,8 @@ class EditPlanIntent(BaseModel):
     target_duration: float = Field(gt=0)
     profile: str = "travel_vlog"
     user_prompt: str = ""
+    # User-specified flow: ordered beat names the edit must follow verbatim.
+    outline: list[str] = Field(default_factory=list)
 
 
 class EditPlanStory(BaseModel):

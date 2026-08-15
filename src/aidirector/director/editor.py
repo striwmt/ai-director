@@ -70,6 +70,8 @@ def _clip_wallclock(
 def sort_chronologically(
     plan: SequencePlan,
     segments_by_id: dict[str, SegmentUnderstanding],
+    *,
+    group_order: list[str] | None = None,
 ) -> SequencePlan:
     """Deterministic chronology guarantee (AGENT.md §2): recording times are
     facts, so the prompt's "respect real chronology" is enforced in code.
@@ -77,7 +79,31 @@ def sort_chronologically(
     Clips with a known capture time are reordered oldest-first; clips
     without one keep their original slots (the AI placed them by meaning,
     and there is no fact to sort them by).
+
+    With ``group_order`` (a user-specified flow), the given beat order is
+    authoritative: clips are grouped by story_beat, groups follow that
+    order (unknown beats keep their first-appearance position at the end),
+    and chronology is enforced only within each group.
     """
+    if group_order is not None:
+        groups: dict[str, list] = {}
+        appearance: list[str] = []
+        for clip in plan.clips:
+            if clip.story_beat not in groups:
+                groups[clip.story_beat] = []
+                appearance.append(clip.story_beat)
+        for clip in plan.clips:
+            groups[clip.story_beat].append(clip)
+        ordered_names = [name for name in group_order if name in groups]
+        ordered_names += [name for name in appearance if name not in group_order]
+        clips = []
+        for name in ordered_names:
+            sub = sort_chronologically(
+                SequencePlan(clips=groups[name]), segments_by_id
+            )
+            clips.extend(sub.clips)
+        return SequencePlan(clips=clips)
+
     timed: list[tuple[int, datetime]] = []
     for index, clip in enumerate(plan.clips):
         moment = _clip_wallclock(clip, segments_by_id.get(clip.segment_id))

@@ -89,7 +89,11 @@ Launching opens an app window (closing the window quits the app).
 1. Click **“+ 新規作成” (New)**
 2. Point **素材パス** (footage path) at the folder with your clips — the
    number of videos found is shown immediately
-3. Write what you want in the **指示** (prompt) field
+3. Write what you want in the **指示** (prompt) field. The optional
+   **流れ** (flow) field pins the structure: write
+   `departure → train → restaurant → winery 1 → winery 2 → walk → train`
+   and the video follows exactly those chapters in that order, with the
+   AI picking the footage for each (CLI: `--flow`)
 4. Pick a target length and a style (travel vlog / cinematic / talk)
 5. Optional:
    - **Captions** — time & place shown at scene changes (format
@@ -127,6 +131,9 @@ The draft appears as a timeline; every cut shows **why the AI chose it**.
   a library panel lists every track in your music folder with its
   analysis facts and description — one click replaces the track, and
   unanalyzed folders can be analyzed right there in the background
+- **Preview any source video** in place — the ▶ button on each cut (plays
+  from that cut's position) or on a Media Memory thumbnail opens a player;
+  the whole file is seekable
 - **Add cuts** from the Media Memory panel — everything the AI understood
   about your footage, one click to append
 
