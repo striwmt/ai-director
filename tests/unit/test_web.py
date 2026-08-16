@@ -409,6 +409,37 @@ def test_music_analyze_job_flow(client, music_dir, monkeypatch):
     ).status_code == 422
 
 
+def test_reanalyze_job_flow(client, memory, tmp_path, monkeypatch):
+    import time
+
+    import aidirector.pipeline as pipeline_mod
+
+    footage = tmp_path / "clips"
+    footage.mkdir()
+    project = memory.get_or_create_project("re", footage)
+
+    called = {}
+
+    async def fake_analyze(footage_arg, config, mem, ai, root, **kwargs):
+        called["reanalyze"] = kwargs.get("reanalyze")
+        return project.id
+
+    monkeypatch.setattr(pipeline_mod, "run_analyze", fake_analyze)
+
+    res = client.post(f"/api/projects/{project.id}/reanalyze")
+    assert res.status_code == 200, res.text
+    for _ in range(100):
+        st = client.get("/api/create/status").json()
+        if st["status"] in ("done", "failed"):
+            break
+        time.sleep(0.05)
+    assert st["status"] == "done", st
+    assert st["plan_id"] == ""  # analysis only — no plan produced
+    assert called["reanalyze"] is True
+
+    assert client.post("/api/projects/prj_nope/reanalyze").status_code == 404
+
+
 def test_create_rejects_missing_music_dir(client, tmp_path):
     footage = tmp_path / "f"
     footage.mkdir()

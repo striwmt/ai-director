@@ -219,6 +219,49 @@ def segment_thumb(segment_id: str, memory: MediaMemory = Depends(get_memory)):
     raise HTTPException(404, "no frame available")
 
 
+@router.post("/projects/{project_id}/reanalyze")
+def start_reanalyze(
+    project_id: str,
+    config: AppConfig = Depends(get_config),
+    memory: MediaMemory = Depends(get_memory),
+) -> dict:
+    """Re-run the VLM over the whole project (e.g. after switching the
+    vision model) and re-embed. Uses the single create-job slot."""
+    row = memory.conn.execute(
+        "SELECT name, root_dir FROM projects WHERE id = ?", (project_id,)
+    ).fetchone()
+    if row is None:
+        raise HTTPException(404, f"project not found: {project_id}")
+    footage = Path(row["root_dir"])
+    if not footage.is_dir():
+        raise HTTPException(422, f"素材ディレクトリが見つかりません: {footage}")
+    if music_job.status()["status"] == "running":
+        raise HTTPException(409, "BGM解析の実行中は再解析を開始できません")
+
+    def work(progress) -> str:
+        import asyncio
+
+        from ...ai.runtime import ModelRuntimeManager
+        from ...ai.services import AIServices
+        from ...pipeline import run_analyze
+
+        conn = connect(config.paths.db_path)
+        try:
+            job_memory = MediaMemory(conn)
+            ai = AIServices(ModelRuntimeManager(config.models))
+            asyncio.run(run_analyze(
+                footage, config, job_memory, ai, Path.cwd(),
+                project_name=row["name"], reanalyze=True, progress=progress,
+            ))
+            return ""  # analysis only — no plan is produced
+        finally:
+            conn.close()
+
+    if not create_job.start({"reanalyze": project_id}, work):
+        raise HTTPException(409, "別の作成ジョブが実行中です")
+    return create_job.status()
+
+
 @router.get("/assets/{asset_id}/metadata")
 def asset_metadata(
     asset_id: str,

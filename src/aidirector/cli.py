@@ -93,6 +93,11 @@ def ingest(
 def analyze(
     footage: Path = typer.Argument(..., help="Footage directory"),
     color_profile: str = typer.Option("auto", help="auto or explicit profile"),
+    reanalyze: bool = typer.Option(
+        False, "--reanalyze",
+        help="Re-run the VLM over every segment (e.g. after switching the "
+             "vision model) and re-embed; transcripts stay cached",
+    ),
     config_file: Optional[Path] = typer.Option(None, "--config"),
     log_level: Optional[str] = typer.Option(None, "--log-level"),
 ) -> None:
@@ -107,6 +112,7 @@ def analyze(
             run_analyze(
                 footage, config, memory, ai, Path.cwd(),
                 color_override=_parse_override(color_profile),
+                reanalyze=reanalyze,
             )
         )
     except AIDirectorError as exc:

@@ -143,6 +143,10 @@ The draft appears as a timeline; every cut shows **why the AI chose it**.
   GPS — plus every raw ffprobe tag verbatim
 - **Add cuts** from the Media Memory panel — everything the AI understood
   about your footage, one click to append
+- **Re-analyze with the VLM** — the VLM再解析… button above Media Memory
+  re-runs the current vision model over every segment (fresh descriptions
+  + search index; transcripts stay cached). Useful after switching to a
+  bigger vision model. CLI: `aidirector analyze ./footage --reanalyze`
 
 **Save** stores a new version (the original draft is kept);
 **プレビュー生成 (Render preview)** rebuilds the video.

@@ -159,12 +159,16 @@ async def run_analyze(
     *,
     color_override: ColorProfile | None = None,
     project_name: str | None = None,
+    reanalyze: bool = False,
     progress: Callable[[str], None] | None = None,
 ) -> str:
     """Full analysis: ingest + deterministic prep + phased AI passes.
 
     Returns the project id. ``progress`` (optional) is called with a short
-    phase name at each phase boundary.
+    phase name at each phase boundary. ``reanalyze`` re-runs the VLM over
+    every segment (e.g. after switching the vision model) and re-embeds
+    the refreshed descriptions; transcripts and technical features stay
+    cached.
     """
 
     def notify(phase: str) -> None:
@@ -231,7 +235,7 @@ async def run_analyze(
                 frames = memory.list_frames(segment.id)
                 await analyze_segment_vision(
                     asset, segment, frames, excerpts.get(segment.id, ""),
-                    ai, memory,
+                    ai, memory, force=reanalyze,
                 )
         await ai.runtime.release("vision")
     except Exception as exc:
@@ -246,7 +250,7 @@ async def run_analyze(
         ]
         _notify(progress, "embedding", done=0, total=len(understandings),
                 item=f"{len(understandings)} セグメント")
-        await embed_segments(understandings, ai, memory)
+        await embed_segments(understandings, ai, memory, force=reanalyze)
         await ai.runtime.release("embedding")
     except Exception as exc:
         log.warning("embedding phase skipped: %s", exc)

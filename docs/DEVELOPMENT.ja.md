@@ -96,6 +96,7 @@ llama-server -hf Qwen/Qwen3-8B-GGUF:Q4_K_M --port 8102 -ngl 99 \
 ```bash
 aidirector ingest ./footage [--color-profile dji-dlog2]
 aidirector analyze ./footage            # セグメント、ASR、VLM、embedding
+aidirector analyze ./footage --reanalyze  # VLM+embeddingを強制再実行
 aidirector edit ./footage --duration 90 --profile travel_vlog \
     --prompt "..." --captions beats --caption-format "{HH}:{MM} {PLACE}" \
     --subtitles --canvas landscape --music-dir ./bgm \

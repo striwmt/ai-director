@@ -376,7 +376,10 @@
     <h2>プレビュー</h2>
     <video id="player" controls preload="metadata"></video>
     <div id="renderState">未レンダリング</div>
-    <h2>Media Memory(クリックで末尾に追加)</h2>
+    <h2>Media Memory(クリックで末尾に追加)
+      <button id="reanalyzeBtn" class="small" style="float:right"
+              title="現在の映像理解モデルで全セグメントを解析し直します">VLM再解析…</button>
+    </h2>
     <div id="memory"></div>
   </section>
 </main>
@@ -971,6 +974,20 @@ $("saveBtn").onclick = async () => {
 
 // --- rename ------------------------------------------------------------
 
+$("reanalyzeBtn").onclick = async () => {
+  if(!projectId) return;
+  const count = $("memory").childElementCount;
+  if(!confirm(
+    `この素材全体(${count}セグメント)を現在の映像理解モデルで解析し直します。\n` +
+    `説明文と検索インデックスが作り直されます(文字起こしは保持)。\n` +
+    `大型VLMでは1セグメントあたり30秒前後かかります。実行しますか?`)) return;
+  try{
+    await api(`/api/projects/${projectId}/reanalyze`, {method:"POST"});
+  }catch(e){ alert(e.message); return; }
+  showProgress();
+  pollCreate();
+};
+
 $("projRename").onclick = async () => {
   if(!projectId) return;
   const current = projectsCache.find(p => p.id === projectId);
@@ -1537,6 +1554,12 @@ function pollCreate(){
       markJobSeen(st);
       await openPlanById(st.plan_id);
       $("jobCloseBtn").click();
+    } else if(st.status === "done"){
+      // Analysis-only job (VLM再解析): no plan to open.
+      badge.textContent = "再解析完了";
+      markJobSeen(st);
+      $("jobCloseBtn").click();
+      if(projectId){ loadMemory(); if(planId) loadPlan(planId); }
     }
   };
   tick();
