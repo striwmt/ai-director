@@ -225,6 +225,7 @@ async def run_director(
     subtitles: bool | None = None,
     music_dir: Path | None = None,
     outline: list[str] | None = None,
+    canvas: str | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> tuple[str, EditPlan]:
     """Run the full director pipeline. Returns (plan_id, edit_plan)."""
@@ -245,6 +246,8 @@ async def run_director(
     intent = EditPlanIntent(
         target_duration=target_duration, profile=profile_name,
         user_prompt=user_prompt, outline=outline,
+        captions=captions, caption_format=caption_format, subtitles=subtitles,
+        music_dir=str(music_dir) if music_dir else None, canvas=canvas,
     )
     run_id = memory.create_director_run(project_id, intent.model_dump())
     search = MediaSearch(memory, ai)

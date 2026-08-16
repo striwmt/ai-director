@@ -111,6 +111,10 @@ Launching opens an app window (closing the window quits the app).
      and shared across projects.
 6. Hit **作成開始 (Create)** and watch the phase-by-phase progress
 
+Pressing **+ 新規作成 (New)** while a project is open pre-fills the form
+with that project's previous settings (prompt, flow, duration, captions,
+BGM folder, …), so re-creating with one tweak is quick.
+
 The first pass over new footage takes a while (the AI actually watches and
 listens to it); **analysis is remembered**, so re-creating with a different
 prompt takes only minutes.

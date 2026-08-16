@@ -128,6 +128,13 @@ class EditPlanIntent(BaseModel):
     user_prompt: str = ""
     # User-specified flow: ordered beat names the edit must follow verbatim.
     outline: list[str] = Field(default_factory=list)
+    # Creation settings, kept for provenance and so the UI can prefill
+    # "create again" with the previous run's setup. None = config default.
+    captions: str | None = None
+    caption_format: str | None = None
+    subtitles: bool | None = None
+    music_dir: str | None = None
+    canvas: str | None = None
 
 
 class EditPlanStory(BaseModel):

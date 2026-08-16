@@ -1266,7 +1266,11 @@ function initCreate(projects){
     if(def) sel.value = def;
   });
 
-  $("createToggle").onclick = () => $("createPanel").classList.toggle("open");
+  $("createToggle").onclick = () => {
+    const opened = $("createPanel").classList.toggle("open");
+    // Creating again from an open project inherits its latest settings.
+    if(opened && projectId) prefillFromProject(projectId);
+  };
   $("cfCaptions").onchange = e =>
     $("cfCapFmt").style.display = e.target.value === "none" ? "none" : "inline-block";
 
@@ -1299,6 +1303,33 @@ function initCreate(projects){
       $("jobError").textContent = "前回の作成が失敗しています:\n" + (st.error || "不明なエラー");
     }
   }).catch(()=>{});
+}
+
+async function prefillFromProject(pid){
+  try{
+    const proj = projectsCache.find(p => p.id === pid);
+    const { plans } = await api(`/api/projects/${pid}/plans`);
+    if(proj){
+      $("cfPath").value = proj.root_dir || $("cfPath").value;
+      $("cfProject").value = proj.name || "";
+    }
+    if(!plans.length){ validatePath(); return; }
+    const it = plans[0].intent || {};   // newest plan first
+    if(it.user_prompt != null) $("cfPrompt").value = it.user_prompt;
+    $("cfFlow").value = (it.outline && it.outline.length) ? it.outline.join(" → ") : "";
+    if(it.target_duration) $("cfDuration").value = it.target_duration;
+    if(it.profile) $("cfProfile").value = it.profile;
+    if(it.canvas) $("cfCanvas").value = it.canvas;
+    if(it.captions != null){
+      $("cfCaptions").value = it.captions;
+      $("cfCaptions").onchange({target: $("cfCaptions")});
+    }
+    if(it.caption_format) $("cfCapFmt").value = it.caption_format;
+    if(it.subtitles != null) $("cfSubtitles").checked = !!it.subtitles;
+    $("cfMusic").value = it.music_dir || "";
+    validatePath();
+    note("前回の作成設定を引き継ぎました(自由に変更できます)");
+  }catch(e){ /* prefill is best-effort */ }
 }
 
 async function validatePath(){

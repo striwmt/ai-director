@@ -95,8 +95,15 @@ async def test_director_with_user_outline(footage_dir, config, memory, mock_ai):
         project_id, config, memory, mock_ai,
         user_prompt="旅の一日", target_duration=10.0,
         profile_name="travel_vlog", outline=outline,
+        captions="beats", caption_format="{HH}:{MM} {PLACE}",
+        subtitles=True, canvas="landscape",
     )
     assert plan.intent.outline == outline
+    # Creation settings are persisted on the intent (UI prefill / provenance).
+    assert plan.intent.captions == "beats"
+    assert plan.intent.caption_format == "{HH}:{MM} {PLACE}"
+    assert plan.intent.subtitles is True
+    assert plan.intent.canvas == "landscape"
     assert plan.clips, "plan has clips"
     # Every clip serves one of the user's flow sections, in flow order.
     beats_used = [c.story_beat for c in plan.clips]

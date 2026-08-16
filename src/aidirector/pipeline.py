@@ -321,7 +321,8 @@ async def run_full_edit(
         project_id, config, memory, ai,
         user_prompt=prompt, target_duration=duration, profile_name=profile,
         captions=captions, caption_format=caption_format, subtitles=subtitles,
-        music_dir=music_dir, outline=outline, progress=progress,
+        music_dir=music_dir, outline=outline, canvas=canvas,
+        progress=progress,
     )
     await ai.runtime.release_all()
 
