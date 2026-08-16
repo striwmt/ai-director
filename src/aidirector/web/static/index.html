@@ -1283,10 +1283,22 @@ function initCreate(projects){
     $("jobError").textContent = "";
   };
 
-  // A job may already be running (page reload)
-  api("/api/create/status").then(st => {
-    if(st.status === "running"){ showProgress(); pollCreate(); }
-  });
+  // A job may already be running (page reload) — or have finished while
+  // the page was away: surface the result once instead of saying nothing.
+  api("/api/create/status").then(async st => {
+    if(st.status === "running"){ showProgress(); pollCreate(); return; }
+    if(st.status === "done" && st.plan_id && jobUnseen(st)){
+      markJobSeen(st);
+      // A deep link takes precedence over jumping to the finished plan.
+      if(location.hash.includes("plan=")) return;
+      note("作成が完了しました — 編集案を開きます");
+      await openPlanById(st.plan_id);
+    }else if(st.status === "failed" && jobUnseen(st)){
+      markJobSeen(st);
+      $("createPanel").classList.add("open");
+      $("jobError").textContent = "前回の作成が失敗しています:\n" + (st.error || "不明なエラー");
+    }
+  }).catch(()=>{});
 }
 
 async function validatePath(){
@@ -1388,21 +1400,32 @@ function pollCreate(){
     }
     if(st.status === "done" && st.plan_id){
       badge.textContent = "作成完了";
-      const projects = await refreshProjects();
-      // The new plan's project is whichever contains it — open it there.
-      for(const p of projects){
-        const { plans } = await api(`/api/projects/${p.id}/plans`);
-        if(plans.some(x => x.id === st.plan_id)){
-          await openProject(p.id);
-          await loadPlan(st.plan_id);
-          break;
-        }
-      }
+      markJobSeen(st);
+      await openPlanById(st.plan_id);
       $("jobCloseBtn").click();
     }
   };
   tick();
 }
+
+// The new plan's project is whichever contains it — open it there.
+async function openPlanById(pid){
+  const projects = await refreshProjects();
+  for(const p of projects){
+    const { plans } = await api(`/api/projects/${p.id}/plans`);
+    if(plans.some(x => x.id === pid)){
+      await openProject(p.id);
+      await loadPlan(pid);
+      return true;
+    }
+  }
+  return false;
+}
+
+// One-time acknowledgement of a finished job across reloads.
+function jobFingerprint(st){ return JSON.stringify([st.status, st.plan_id, st.error]); }
+function markJobSeen(st){ localStorage.setItem("aid_job_seen", jobFingerprint(st)); }
+function jobUnseen(st){ return localStorage.getItem("aid_job_seen") !== jobFingerprint(st); }
 
 init().catch(e => note("初期化エラー: " + e.message));
 </script>
