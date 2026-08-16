@@ -36,7 +36,9 @@ async def embed_segments(
     embedded = 0
     for i in range(0, len(pending), batch_size):
         batch = pending[i : i + batch_size]
-        vectors = await ai.embed_text([u.to_search_text() for u in batch])
+        vectors = await ai.embed_text(
+            [u.to_search_text() for u in batch], prompt_name="document"
+        )
         for u, emb in zip(batch, vectors):
             memory.save_embedding("segment", u.segment_id, "text", model, emb.vector)
             embedded += 1

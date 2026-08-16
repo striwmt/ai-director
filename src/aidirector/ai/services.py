@@ -51,9 +51,16 @@ class AIServices:
 
     # -- embedding -----------------------------------------------------
 
-    async def embed_text(self, texts: list[str]) -> list[Embedding]:
+    async def embed_text(
+        self, texts: list[str], prompt_name: str | None = None
+    ) -> list[Embedding]:
+        """``prompt_name`` ("query"/"document") steers asymmetric retrieval
+        models; providers without prompt support simply ignore it."""
         provider = await self.runtime.acquire("embedding")
-        return await provider.embed_text(texts)
+        try:
+            return await provider.embed_text(texts, prompt_name=prompt_name)
+        except TypeError:
+            return await provider.embed_text(texts)
 
     # -- music ---------------------------------------------------------
 

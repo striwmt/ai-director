@@ -104,19 +104,29 @@ class SentenceTransformersEmbeddingProvider:
         self._model = None
         free_cuda_memory()
 
-    def _encode(self, inputs: list[Any]) -> list[Embedding]:
-        vectors = self._model.encode(inputs, normalize_embeddings=True)
+    def _encode(
+        self, inputs: list[Any], prompt_name: str | None = None
+    ) -> list[Embedding]:
+        # Asymmetric retrieval models (Nemotron-3-Embed, E5, …) define
+        # "query"/"document" prompts; only pass a prompt the model knows,
+        # so symmetric models (Qwen3-VL-Embedding) keep working untouched.
+        kwargs: dict[str, Any] = {"normalize_embeddings": True}
+        if prompt_name and prompt_name in (getattr(self._model, "prompts", None) or {}):
+            kwargs["prompt_name"] = prompt_name
+        vectors = self._model.encode(inputs, **kwargs)
         return [
             Embedding(vector=[float(x) for x in vec], model=self._cfg.model)
             for vec in vectors
         ]
 
-    async def embed_text(self, texts: list[str]) -> list[Embedding]:
+    async def embed_text(
+        self, texts: list[str], prompt_name: str | None = None
+    ) -> list[Embedding]:
         if not texts:
             return []
         if self._model is None:
             await self.load()
-        return await asyncio.to_thread(self._encode, texts)
+        return await asyncio.to_thread(self._encode, texts, prompt_name)
 
     async def embed_images(self, images: list[Path]) -> list[Embedding]:
         if not images:

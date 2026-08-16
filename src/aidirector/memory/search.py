@@ -53,7 +53,7 @@ class MediaSearch:
 
         # 1. Embedding similarity (if an embedding provider is available).
         try:
-            query_vecs = await self.ai.embed_text([query])
+            query_vecs = await self.ai.embed_text([query], prompt_name="query")
             if query_vecs:
                 stored = self.memory.iter_segment_embeddings(project_id, kind="text")
                 for seg_id, vector in stored:

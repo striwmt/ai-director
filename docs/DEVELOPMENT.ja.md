@@ -55,7 +55,7 @@ Footage → Media Ingest → Color Management → Perception → Media Memory
 |---|---|---|
 | 映像理解 | Qwen3-VL-4B-Instruct | `transformers`(bf16)、`llama-server`(マルチモーダルGGUF+mmproj)or `openai-compatible` |
 | Director | Qwen3-8B(NF4 4bit・インプロセス) | `transformers`(既定)、`llama-server`(自動管理・高速)or `openai-compatible` |
-| Embedding | Qwen3-VL-Embedding-2B | `sentence-transformers` |
+| Embedding | Qwen3-VL-Embedding-2B(任意のsentence-transformersモデル可。Nemotron-3-Embed等の非対称query/passageプロンプトは自動適用) | `sentence-transformers` or `openai-compatible` |
 | 音声認識 | faster-whisper large-v3-turbo | `faster-whisper` |
 | 楽曲embedding | CLAP(laion/clap-htsat-unfused) | `transformers` |
 | 楽曲理解 | Qwen2.5-Omni-7B(Thinkerのみ4bit、ピーク約9GB VRAM) | `transformers`(または `none`) |

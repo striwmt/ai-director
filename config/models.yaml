@@ -66,12 +66,23 @@ models:
     context_length: 16384
     extra: { quantization: 4bit }
 
+  # vLLM (or SGLang, TGI, …): every HTTP workload speaks the OpenAI
+  # dialect, so point provider: openai-compatible + base_url at a vLLM
+  # server for director/vision (chat completions, incl. image_url) and
+  # embedding (/v1/embeddings). Note vLLM holds its VRAM permanently —
+  # on a single 16GB GPU that fights the phase execution of in-process
+  # models, so prefer it when vLLM runs on a second GPU or another host.
+
   speech:
     provider: faster-whisper
     model: large-v3-turbo
     device: auto
     compute_type: float16
 
+  # Any sentence-transformers model works; asymmetric retrieval models
+  # (e.g. nvidia/Nemotron-3-Embed-1B-BF16) get their query:/passage:
+  # prompts applied automatically. Switching models re-embeds cached
+  # segments on the next analyze.
   embedding:
     provider: sentence-transformers      # official path for Qwen3-VL-Embedding
     model: Qwen/Qwen3-VL-Embedding-2B

@@ -56,7 +56,7 @@ Reference model set (verified on RTX 5060 Ti 16GB):
 |---|---|---|
 | Vision | Qwen3-VL-4B-Instruct | `transformers` (bf16), `llama-server` (multimodal GGUF + mmproj) or `openai-compatible` |
 | Director | Qwen3-8B (NF4 4-bit, in-process) | `transformers` (default), `llama-server` (managed, faster) or `openai-compatible` |
-| Embedding | Qwen3-VL-Embedding-2B | `sentence-transformers` |
+| Embedding | Qwen3-VL-Embedding-2B (or any sentence-transformers model, e.g. Nemotron-3-Embed — asymmetric query/passage prompts auto-applied) | `sentence-transformers` or `openai-compatible` |
 | Speech | faster-whisper large-v3-turbo | `faster-whisper` |
 | Music embedding | CLAP (laion/clap-htsat-unfused) | `transformers` |
 | Music understanding | Qwen2.5-Omni-7B, Thinker-only 4-bit (~9 GB peak VRAM) | `transformers` (or `none`) |
