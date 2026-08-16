@@ -23,6 +23,41 @@ log = get_logger("director.selector")
 _OVERFETCH = 3
 
 
+def filter_candidates_by_time(
+    candidates: list[SegmentUnderstanding],
+    frontier: str | None,
+) -> list[SegmentUnderstanding]:
+    """Chronology guarantee at selection time: once a beat used footage
+    shot at time T, later beats only get candidates shot at >= T (undated
+    candidates stay). Falls back to the unfiltered list rather than
+    leaving a beat empty."""
+    if frontier is None:
+        return candidates
+    kept = [
+        c for c in candidates
+        if c.recorded_at is None or c.recorded_at >= frontier
+    ]
+    if not kept and candidates:
+        log.warning(
+            "no candidates shot after %s; allowing earlier footage for this beat",
+            frontier,
+        )
+        return candidates
+    return kept
+
+
+def advance_time_frontier(
+    frontier: str | None,
+    chosen: list[SegmentUnderstanding],
+) -> str | None:
+    """Latest capture time used so far (ISO strings compare correctly
+    within one clock basis, which one camera's metadata is)."""
+    for c in chosen:
+        if c.recorded_at is not None and (frontier is None or c.recorded_at > frontier):
+            frontier = c.recorded_at
+    return frontier
+
+
 def diversify_candidates(
     segments: list[SegmentRecord],
     usage_counts: dict[str, int],

@@ -94,8 +94,12 @@ def sort_chronologically(
                 appearance.append(clip.story_beat)
         for clip in plan.clips:
             groups[clip.story_beat].append(clip)
-        ordered_names = [name for name in group_order if name in groups]
-        ordered_names += [name for name in appearance if name not in group_order]
+        # A flow may repeat a section name (電車移動 out and back) — each
+        # group must still be emitted exactly once or its clips duplicate.
+        ordered_names: list[str] = []
+        for name in group_order + [n for n in appearance if n not in group_order]:
+            if name in groups and name not in ordered_names:
+                ordered_names.append(name)
         clips = []
         for name in ordered_names:
             sub = sort_chronologically(

@@ -49,7 +49,12 @@ from .schemas import (
     StoryPlan,
     SubtitleLine,
 )
-from .selector import retrieve_candidates, select_for_beat
+from .selector import (
+    advance_time_frontier,
+    filter_candidates_by_time,
+    retrieve_candidates,
+    select_for_beat,
+)
 from .story_planner import plan_story
 
 log = get_logger("director")
@@ -302,6 +307,11 @@ async def run_director(
         used_ids: set[str] = set()
         selections: list[tuple[BeatSelection, list[SegmentUnderstanding]]] = []
         segments_by_id: dict[str, SegmentUnderstanding] = {}
+        # With enforced chronology, beats are consumed in real time:
+        # once a beat used footage shot at time T, later beats only see
+        # candidates shot at >= T. This keeps the final timeline monotonic
+        # even though a user flow forbids reordering across sections.
+        time_frontier: str | None = None
         for beat_idx, beat in enumerate(beats.beats):
             tick(done=beat_idx, total=len(beats.beats),
                  item=f"素材選択: {beat.name}")
@@ -310,6 +320,8 @@ async def run_director(
                 limit=config.director.candidates_per_beat, exclude=used_ids,
                 usage_counts=usage_counts,
             )
+            if enforce_chronology:
+                candidates = filter_candidates_by_time(candidates, time_frontier)
             for c in candidates:
                 segments_by_id[c.segment_id] = c
             selection = await select_for_beat(
@@ -321,6 +333,8 @@ async def run_director(
                 if c.segment_id in segments_by_id
             ]
             used.extend(chosen)
+            if enforce_chronology:
+                time_frontier = advance_time_frontier(time_frontier, chosen)
             used_ids.update(c.segment_id for c in chosen)
             if not reuse_allowed:
                 # Exclude every other segment of the chosen source videos

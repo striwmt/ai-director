@@ -94,6 +94,23 @@ def test_outline_order_beats_global_chronology():
     ]
 
 
+def test_repeated_flow_section_does_not_duplicate_clips():
+    # Regression: 出発→電車移動→…→電車移動 — a section name appearing
+    # twice in the flow must not emit its group's clips twice.
+    segments = {
+        "train": make_segment("train", "2026-08-15T13:06:00"),
+        "start": make_segment("start", "2026-08-15T11:00:00"),
+    }
+    plan = SequencePlan(clips=[
+        make_clip("start", "出発"), make_clip("train", "電車移動"),
+    ])
+    sorted_plan = sort_chronologically(
+        plan, segments,
+        group_order=["出発", "電車移動", "帰り道", "電車移動"],
+    )
+    assert [c.segment_id for c in sorted_plan.clips] == ["start", "train"]
+
+
 def test_group_order_keeps_unknown_beats_at_end():
     segments = {
         "a": make_segment("a", "2026-08-10T10:00:00"),
@@ -104,3 +121,30 @@ def test_group_order_keeps_unknown_beats_at_end():
     ])
     sorted_plan = sort_chronologically(plan, segments, group_order=["出発"])
     assert [c.segment_id for c in sorted_plan.clips] == ["b", "a"]
+
+
+def test_time_frontier_filtering():
+    from aidirector.director.selector import (
+        advance_time_frontier,
+        filter_candidates_by_time,
+    )
+
+    morning = make_segment("morning", "2026-08-15T09:00:00")
+    noon = make_segment("noon", "2026-08-15T12:00:00")
+    evening = make_segment("evening", "2026-08-15T18:00:00")
+    undated = make_segment("undated", None)
+    undated.recorded_at = None
+
+    # No frontier yet: everything passes.
+    assert filter_candidates_by_time([morning, noon], None) == [morning, noon]
+
+    frontier = advance_time_frontier(None, [noon])
+    assert frontier == "2026-08-15T12:00:00"
+    # Earlier footage is excluded for later beats; undated stays.
+    kept = filter_candidates_by_time([morning, evening, undated], frontier)
+    assert [c.segment_id for c in kept] == ["evening", "undated"]
+    # Never empty a beat: all-earlier candidates fall back unfiltered.
+    assert filter_candidates_by_time([morning], frontier) == [morning]
+    # The frontier only moves forward.
+    assert advance_time_frontier(frontier, [morning]) == frontier
+    assert advance_time_frontier(frontier, [evening]) == "2026-08-15T18:00:00"
