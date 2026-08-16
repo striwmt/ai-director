@@ -89,7 +89,8 @@ class OpenAICompatibleVisionProvider:
             {"role": "user", "content": _build_user_content(images, context)},
         ]
         content = await chat_completion(
-            self._client, self._cfg.model, messages, temperature=0.2
+            self._client, self._cfg.model, messages, temperature=0.2,
+            max_tokens=1024,
         )
         try:
             return VisionAnalysis.model_validate(extract_json_object(content))

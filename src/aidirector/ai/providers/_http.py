@@ -19,12 +19,15 @@ from ...config import ModelEndpointConfig
 from ...errors import ProviderError
 
 
-def make_client(cfg: ModelEndpointConfig, timeout: float = 300.0) -> httpx.AsyncClient:
+def make_client(cfg: ModelEndpointConfig, timeout: float = 600.0) -> httpx.AsyncClient:
     if not cfg.base_url:
         raise ProviderError(f"provider '{cfg.provider}' requires base_url")
     headers = {}
     if cfg.api_key:
         headers["Authorization"] = f"Bearer {cfg.api_key}"
+    # Big local models can legitimately take minutes per request;
+    # extra.request_timeout overrides the default.
+    timeout = float((cfg.extra or {}).get("request_timeout", timeout))
     return httpx.AsyncClient(base_url=cfg.base_url, headers=headers, timeout=timeout)
 
 
@@ -57,7 +60,10 @@ async def chat_completion(
             "(requires llama.cpp installed)."
         ) from exc
     except httpx.HTTPError as exc:
-        raise ProviderError(f"chat completion request failed: {exc}") from exc
+        # str(ReadTimeout) is empty — always include the exception type.
+        raise ProviderError(
+            f"chat completion request failed: {type(exc).__name__}: {exc}"
+        ) from exc
     if response.status_code >= 400:
         raise ProviderError(
             f"chat completion HTTP {response.status_code}: {response.text[:500]}"

@@ -81,6 +81,10 @@ class OpenAICompatibleDirectorProvider:
             "json_schema": {"name": response_model.__name__, "schema": schema},
         }
 
+        # Cap generation: structured plans never legitimately need more —
+        # without a cap a verbose model can ramble past the HTTP timeout.
+        max_tokens = int((self._cfg.extra or {}).get("max_new_tokens", 4096))
+
         last_error: Exception | None = None
         for attempt in range(1, _MAX_ATTEMPTS + 1):
             try:
@@ -89,6 +93,7 @@ class OpenAICompatibleDirectorProvider:
                     self._cfg.model,
                     chat,
                     response_format=response_format if attempt == 1 else None,
+                    max_tokens=max_tokens,
                 )
             except Exception as exc:
                 # Some servers reject json_schema response_format; retry
