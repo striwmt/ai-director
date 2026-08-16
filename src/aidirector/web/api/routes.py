@@ -162,6 +162,7 @@ def _segment_info(memory: MediaMemory, segment_id: str) -> dict | None:
     u = build_understanding(segment, memory)
     return {
         "segment_id": segment.id,
+        "asset_id": segment.asset_id,
         "asset_name": u.asset_name,
         "seg_start": segment.start,
         "seg_end": segment.end,
@@ -216,6 +217,36 @@ def segment_thumb(segment_id: str, memory: MediaMemory = Depends(get_memory)):
         if path.is_file():
             return FileResponse(path, media_type="image/jpeg")
     raise HTTPException(404, "no frame available")
+
+
+@router.get("/assets/{asset_id}/metadata")
+def asset_metadata(
+    asset_id: str,
+    memory: MediaMemory = Depends(get_memory),
+) -> dict:
+    """Full media metadata for one source file: normalized fields plus
+    every raw ffprobe tag verbatim, and the derived recording start
+    (timecode-refined and local-time when trustworthy)."""
+    asset = memory.get_asset(asset_id)
+    if asset is None:
+        raise HTTPException(404, f"asset not found: {asset_id}")
+    from ...media.metadata import refined_creation_time
+    from ...perception.interpretation import parse_creation_time, to_local_time
+
+    refined = refined_creation_time(asset.metadata)
+    start = refined or asset.metadata.creation_time
+    local = to_local_time(parse_creation_time(start))
+    return {
+        "asset_id": asset.id,
+        "file_name": asset.file_name,
+        "path": asset.path,
+        "size": asset.size,
+        "duration": asset.duration,
+        "status": asset.status,
+        "metadata": asset.metadata.model_dump(),
+        "recording_start_local": local.isoformat() if local else None,
+        "timecode_trusted": refined is not None,
+    }
 
 
 @router.api_route("/segments/{segment_id}/video.mp4", methods=["GET", "HEAD"])

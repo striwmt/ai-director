@@ -115,8 +115,17 @@
   .mem .playbtn { position:absolute; top:10px; right:10px; width:26px; height:26px;
     border-radius:50%; border:none; background:rgba(0,0,0,.55); color:#fff;
     font-size:11px; cursor:pointer; opacity:0; transition:opacity .15s; }
-  .mem:hover .playbtn { opacity:1; }
-  .mem .playbtn:hover { background:rgba(0,0,0,.8); }
+  .mem .infobtn { position:absolute; top:10px; right:42px; width:26px; height:26px;
+    border-radius:50%; border:none; background:rgba(0,0,0,.55); color:#fff;
+    font-size:12px; cursor:pointer; opacity:0; transition:opacity .15s; }
+  .mem:hover .playbtn, .mem:hover .infobtn { opacity:1; }
+  .mem .playbtn:hover, .mem .infobtn:hover { background:rgba(0,0,0,.8); }
+  .metatable { width:100%; border-collapse:collapse; font-size:12.5px; }
+  .metatable td { padding:3px 8px; border-bottom:1px solid var(--line);
+    vertical-align:top; word-break:break-all; }
+  .metatable td:first-child { color:var(--muted); white-space:nowrap; width:34%; }
+  .metasep td { padding-top:12px; color:var(--patina); font-weight:600;
+    border-bottom:1px solid var(--patina); }
   .mem img { width:100%; border-radius:3px; display:block; background:#000; }
   .mem .t { font-size:11.5px; color:var(--muted); margin-top:4px;
             display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
@@ -398,6 +407,17 @@
       <span class="spacer"></span>
       <button id="mlAnalyze" type="button">このフォルダを解析</button>
       <button id="mlClose" type="button">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<div id="metaModal" class="modal-bg" hidden>
+  <div class="modal" style="width:min(720px, 94vw);">
+    <div class="modal-head mono" id="mmTitle"></div>
+    <div id="mmBody" style="max-height:62vh; overflow:auto;"></div>
+    <div class="modal-foot">
+      <span class="spacer"></span>
+      <button id="mmClose" type="button">閉じる</button>
     </div>
   </div>
 </div>
@@ -695,6 +715,7 @@ function clipCard(entry, i){
   ops.className = "ops";
   ops.innerHTML = `
     <button class="small" data-k="play" title="この動画をプレビュー再生">▶</button>
+    <button class="small" data-k="info" title="メタデータ(タグ)を表示">ⓘ</button>
     <button class="small" data-k="up" title="上へ" ${i===0?"disabled":""}>↑</button>
     <button class="small" data-k="down" title="下へ" ${i===plan.clips.length-1?"disabled":""}>↓</button>
     <button class="small" data-k="del" title="除外">✕</button>`;
@@ -733,6 +754,9 @@ function clipCard(entry, i){
   }
   ops.querySelector('[data-k=play]').onclick = () =>
     openVideoPreview({...s, segment_id: c.segment_id}, c.source_in);
+  ops.querySelector('[data-k=info]').onclick = () => {
+    if(s.asset_id) openMediaInfo(s.asset_id);
+  };
   ops.querySelector('[data-k=up]').onclick = () => move(i, -1);
   ops.querySelector('[data-k=down]').onclick = () => move(i, +1);
   ops.querySelector('[data-k=del]').onclick = () => {
@@ -913,12 +937,17 @@ async function loadMemory(){
     d.className = "mem";
     d.innerHTML = `<img loading="lazy" src="${seg.thumb}" alt="">
       <button class="playbtn" type="button" title="この動画をプレビュー再生">▶</button>
+      <button class="infobtn" type="button" title="メタデータ(タグ)を表示">ⓘ</button>
       <div class="m mono">${fmt(seg.seg_end-seg.seg_start)}s ・ ${seg.asset_name}</div>
       <div class="t">${seg.description||"(解析なし)"}</div>`;
     d.onclick = () => addFromMemory(seg);
     d.querySelector(".playbtn").onclick = e => {
       e.stopPropagation();
       openVideoPreview(seg);
+    };
+    d.querySelector(".infobtn").onclick = e => {
+      e.stopPropagation();
+      openMediaInfo(seg.asset_id);
     };
     grid.appendChild(d);
   }
@@ -1179,6 +1208,53 @@ function openVideoPreview(seg, startAt){
   };
   v.src = seg.video || `/api/segments/${seg.segment_id}/video.mp4`;
 }
+// --- media metadata (tags) modal --------------------------------------
+
+const META_LABELS = [
+  ["file_name", "ファイル名"], ["path", "パス"], ["duration", "長さ (秒)"],
+  ["size", "サイズ (bytes)"], ["status", "解析状態"],
+];
+const MD_LABELS = [
+  ["video_codec", "映像コーデック"], ["width", "幅"], ["height", "高さ"],
+  ["fps", "フレームレート"], ["bit_depth", "ビット深度"], ["pix_fmt", "ピクセル形式"],
+  ["color_primaries", "色域"], ["color_transfer", "ガンマ/転送特性"],
+  ["color_space", "色空間"], ["rotation", "回転"],
+  ["audio_codec", "音声コーデック"], ["audio_channels", "音声ch"],
+  ["audio_sample_rate", "サンプルレート"],
+  ["creation_time", "creation_time (記録値)"], ["timecode", "タイムコード"],
+  ["camera_make", "カメラメーカー"], ["camera_model", "カメラ機種"], ["gps", "GPS"],
+];
+
+function metaRow(label, value){
+  if(value === null || value === undefined || value === "") return "";
+  return `<tr><td>${escapeAttr(String(label))}</td><td class="mono">${escapeAttr(String(value))}</td></tr>`;
+}
+
+async function openMediaInfo(assetId){
+  let info;
+  try{ info = await api(`/api/assets/${assetId}/metadata`); }
+  catch(e){ alert(e.message); return; }
+  $("mmTitle").textContent = info.file_name;
+  let rows = "";
+  for(const [key, label] of META_LABELS) rows += metaRow(label, info[key]);
+  rows += metaRow("撮影開始 (ローカル時刻)", info.recording_start_local);
+  if(info.metadata.timecode)
+    rows += metaRow("タイムコードの扱い", info.timecode_trusted
+      ? "時計と整合 — 開始時刻の高精度化に使用"
+      : "時計と不整合 — 参考値として保存のみ(時刻には未使用)");
+  for(const [key, label] of MD_LABELS) rows += metaRow(label, info.metadata[key]);
+  const raw = info.metadata.raw_tags || {};
+  const rawKeys = Object.keys(raw).sort();
+  if(rawKeys.length){
+    rows += `<tr class="metasep"><td colspan="2">生タグ (ffprobe, ${rawKeys.length}件)</td></tr>`;
+    for(const key of rawKeys) rows += metaRow(key, raw[key]);
+  }
+  $("mmBody").innerHTML = `<table class="metatable">${rows}</table>`;
+  $("metaModal").hidden = false;
+}
+$("mmClose").onclick = () => { $("metaModal").hidden = true; };
+$("metaModal").onclick = e => { if(e.target === $("metaModal")) $("metaModal").hidden = true; };
+
 function closeVideoPreview(){
   const v = $("vmPlayer");
   v.pause();

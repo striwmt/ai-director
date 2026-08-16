@@ -106,6 +106,17 @@ def test_segment_video_endpoint(client, populated, memory, tmp_path):
     assert seg_a["video"] == "/api/segments/seg_a/video.mp4"
 
 
+def test_asset_metadata_endpoint(client, populated, memory):
+    segs = client.get(f"/api/projects/{populated['project_id']}/segments").json()
+    asset_id = segs["segments"][0]["asset_id"]
+    info = client.get(f"/api/assets/{asset_id}/metadata").json()
+    assert info["file_name"] == "clip.mp4"
+    assert info["metadata"]["camera_make"] == "DJI"
+    assert "raw_tags" in info["metadata"]
+    assert info["recording_start_local"] is None  # fixture has no creation_time
+    assert client.get("/api/assets/ast_nope/metadata").status_code == 404
+
+
 def test_save_creates_new_version(client, populated):
     plan = client.get(f"/api/plans/{populated['plan_id']}").json()
     clips = [c["clip"] for c in plan["clips"]]

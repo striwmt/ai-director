@@ -138,6 +138,9 @@ The draft appears as a timeline; every cut shows **why the AI chose it**.
 - **Preview any source video** in place — the ▶ button on each cut (plays
   from that cut's position) or on a Media Memory thumbnail opens a player;
   the whole file is seekable
+- **Inspect media metadata** with the ⓘ button: codec, resolution, local
+  recording start, timecode (and whether it was trusted), camera model,
+  GPS — plus every raw ffprobe tag verbatim
 - **Add cuts** from the Media Memory panel — everything the AI understood
   about your footage, one click to append
 
