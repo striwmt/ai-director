@@ -1046,6 +1046,10 @@ function openMusicLibrary(){
   $("mlList").innerHTML = "";
   $("musicModal").hidden = false;
   if(prefill) loadMusicLib();
+  // An analyze job may still be running (reload / modal reopened).
+  api("/api/music/analyze/status").then(st => {
+    if(st.status === "running") pollMusicAnalyze();
+  }).catch(()=>{});
 }
 
 async function loadMusicLib(){
@@ -1115,6 +1119,11 @@ async function startMusicAnalyze(){
       body: JSON.stringify({path}),
     });
   }catch(e){ $("mlInfo").textContent = e.message; return; }
+  pollMusicAnalyze();
+}
+
+function pollMusicAnalyze(){
+  clearTimeout(musicPollTimer);
   $("mlAnalyze").disabled = true;
   const poll = async () => {
     try{
@@ -1130,7 +1139,7 @@ async function startMusicAnalyze(){
       $("mlAnalyze").disabled = false;
       if(st.status === "failed"){
         $("mlInfo").textContent = "解析失敗: " + (st.error || "");
-      }else{
+      }else if(st.status === "done"){
         $("mlInfo").textContent = "解析完了";
         await loadMusicLib();
         if(plan && plan.music) renderMusicCard();  // refresh facts line
