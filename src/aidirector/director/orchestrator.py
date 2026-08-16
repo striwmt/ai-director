@@ -53,6 +53,7 @@ from .schemas import (
 )
 from .selector import (
     advance_time_frontier,
+    backfill_candidates_from_window,
     filter_candidates_by_time,
     filter_candidates_by_window,
     plan_time_windows,
@@ -355,20 +356,25 @@ async def run_director(
             ]
             guidance = ""
             if enforce_chronology:
-                in_window = filter_candidates_by_window(
-                    candidates, windows[beat_idx]
-                )
-                in_window = filter_candidates_by_time(in_window, time_frontier)
-                if in_window:
-                    candidates = in_window
-                else:
-                    log.warning(
-                        "beat '%s': nothing inside its time window; relaxing",
-                        beat.name,
+                lo, hi = windows[beat_idx]
+                if time_frontier is not None and (lo is None or time_frontier > lo):
+                    lo = time_frontier
+                in_window = filter_candidates_by_window(candidates, (lo, hi))
+                if not in_window:
+                    # Time-correct footage beats semantically-similar
+                    # footage from the wrong part of the day; a beat with
+                    # no footage in its range stays empty — the timeline
+                    # never travels backwards.
+                    in_window = backfill_candidates_from_window(
+                        memory, project_id, lo, hi, used_ids, cpb,
                     )
-                    candidates = filter_candidates_by_time(
-                        candidates, time_frontier
+                    log.info(
+                        "beat '%s': semantic pool empty in window %s-%s; "
+                        "backfilled %d time-window segments",
+                        beat.name, (lo or "")[11:16], (hi or "")[11:16],
+                        len(in_window),
                     )
+                candidates = in_window
                 guidance = (
                     "The story follows real chronology; these candidates come "
                     "from this beat's own part of the shoot. Prefer the "

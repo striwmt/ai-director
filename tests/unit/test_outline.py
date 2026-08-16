@@ -143,8 +143,9 @@ def test_time_frontier_filtering():
     # Earlier footage is excluded for later beats; undated stays.
     kept = filter_candidates_by_time([morning, evening, undated], frontier)
     assert [c.segment_id for c in kept] == ["evening", "undated"]
-    # Never empty a beat: all-earlier candidates fall back unfiltered.
-    assert filter_candidates_by_time([morning], frontier) == [morning]
+    # Strict: all-earlier candidates yield an empty list — the
+    # orchestrator backfills from the time window, never from the past.
+    assert filter_candidates_by_time([morning], frontier) == []
     # The frontier only moves forward.
     assert advance_time_frontier(frontier, [morning]) == frontier
     assert advance_time_frontier(frontier, [evening]) == "2026-08-15T18:00:00"

@@ -106,21 +106,42 @@ def filter_candidates_by_time(
 ) -> list[SegmentUnderstanding]:
     """Chronology guarantee at selection time: once a beat used footage
     shot at time T, later beats only get candidates shot at >= T (undated
-    candidates stay). Falls back to the unfiltered list rather than
-    leaving a beat empty."""
+    candidates stay). A beat left empty is backfilled from its time
+    window by the orchestrator — never with earlier footage."""
     if frontier is None:
         return candidates
-    kept = [
+    return [
         c for c in candidates
         if c.recorded_at is None or c.recorded_at >= frontier
     ]
-    if not kept and candidates:
-        log.warning(
-            "no candidates shot after %s; allowing earlier footage for this beat",
-            frontier,
-        )
-        return candidates
-    return kept
+
+
+def backfill_candidates_from_window(
+    memory: MediaMemory,
+    project_id: str,
+    lo: str | None,
+    hi: str | None,
+    exclude: set[str],
+    limit: int,
+) -> list[SegmentUnderstanding]:
+    """When a beat's semantic pool has nothing inside its time window,
+    offer whatever WAS filmed then: in a chronological flow a section is
+    defined by its part of the shoot, so time-correct footage beats
+    semantically-similar footage from the wrong part of the day."""
+    matches: list[SegmentUnderstanding] = []
+    for segment in memory.list_project_segments(project_id):
+        if segment.id in exclude:
+            continue
+        u = build_understanding(segment, memory)
+        if u.recorded_at is None:
+            continue
+        if lo is not None and u.recorded_at < lo:
+            continue
+        if hi is not None and u.recorded_at > hi:
+            continue
+        matches.append(u)
+    matches.sort(key=lambda u: u.recorded_at or "")
+    return matches[:limit]
 
 
 def advance_time_frontier(

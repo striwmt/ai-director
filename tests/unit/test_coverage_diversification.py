@@ -71,3 +71,35 @@ def test_asset_usage_counts(memory):
     counts = memory.asset_usage_counts(project.id)
     assert counts == {"ast_one": 2, "ast_two": 1}
     assert "ast_unused" not in counts
+
+
+def test_backfill_candidates_from_window(memory):
+    from aidirector.director.selector import backfill_candidates_from_window
+    from aidirector.media.metadata import MediaMetadata
+
+    project = memory.get_or_create_project("trip", Path("/footage"))
+    times = [
+        ("morning.mp4", "2026-08-15T09:00:00"),
+        ("noon.mp4", "2026-08-15T12:00:00"),
+        ("evening.mp4", "2026-08-15T18:00:00"),
+    ]
+    for i, (name, ct) in enumerate(times):
+        asset = AssetRecord(
+            id=f"ast_{i}", project_id=project.id, path=f"/footage/{name}",
+            file_name=name, kind="video", size=1000, mtime=1723600000.0,
+            partial_hash=f"hash_{name}", duration=12.5,
+            metadata=MediaMetadata(duration=12.5, creation_time=ct),
+        )
+        memory.upsert_asset(asset)
+        memory.replace_segments(asset.id, [make_segment(f"seg_{i}", asset.id)])
+
+    got = backfill_candidates_from_window(
+        memory, project.id, "2026-08-15T10:00:00", "2026-08-15T13:00:00",
+        set(), 8,
+    )
+    assert [u.segment_id for u in got] == ["seg_1"]
+
+    got = backfill_candidates_from_window(
+        memory, project.id, None, None, {"seg_0"}, 8,
+    )
+    assert [u.segment_id for u in got] == ["seg_1", "seg_2"]
