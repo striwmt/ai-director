@@ -755,7 +755,7 @@ function clipCard(entry, i){
   ops.querySelector('[data-k=play]').onclick = () =>
     openVideoPreview({...s, segment_id: c.segment_id}, c.source_in);
   ops.querySelector('[data-k=info]').onclick = () => {
-    if(s.asset_id) openMediaInfo(s.asset_id);
+    if(s.asset_id) openMediaInfo(s.asset_id, c.segment_id);
   };
   ops.querySelector('[data-k=up]').onclick = () => move(i, -1);
   ops.querySelector('[data-k=down]').onclick = () => move(i, +1);
@@ -947,7 +947,7 @@ async function loadMemory(){
     };
     d.querySelector(".infobtn").onclick = e => {
       e.stopPropagation();
-      openMediaInfo(seg.asset_id);
+      openMediaInfo(seg.asset_id, seg.segment_id);
     };
     grid.appendChild(d);
   }
@@ -1230,12 +1230,39 @@ function metaRow(label, value){
   return `<tr><td>${escapeAttr(String(label))}</td><td class="mono">${escapeAttr(String(value))}</td></tr>`;
 }
 
-async function openMediaInfo(assetId){
+const AI_LABELS = [
+  ["description", "説明 (VLM)"], ["subjects", "被写体"], ["actions", "動作"],
+  ["mood", "ムード"], ["camera_motion", "カメラの動き"],
+  ["notable_events", "注目イベント"], ["story_roles", "ストーリー上の役割"],
+  ["narrative_values", "物語的価値"], ["transcript", "文字起こし (この区間)"],
+  ["quality_flags", "品質フラグ"], ["sharpness", "シャープネス"],
+  ["loudness_lufs", "ラウドネス (LUFS)"], ["silence_ratio", "無音率"],
+];
+
+async function openMediaInfo(assetId, segmentId){
   let info;
   try{ info = await api(`/api/assets/${assetId}/metadata`); }
   catch(e){ alert(e.message); return; }
   $("mmTitle").textContent = info.file_name;
   let rows = "";
+  if(segmentId){
+    try{
+      const ai = await api(`/api/segments/${segmentId}/understanding`);
+      const u = ai.understanding;
+      rows += `<tr class="metasep"><td colspan="2">AIが検出した情報(セグメント ${fmt(u.start)}–${fmt(u.end)}s)</td></tr>`;
+      for(const [key, label] of AI_LABELS){
+        const value = u[key];
+        rows += metaRow(label, Array.isArray(value) ? value.join(", ") : value);
+      }
+      if(ai.vision_provenance)
+        rows += metaRow("映像理解モデル",
+          `${ai.vision_provenance.model || ""}` +
+          (ai.vision_provenance.prompt_version ? ` (prompt ${ai.vision_provenance.prompt_version})` : ""));
+      if(ai.embedding_models && ai.embedding_models.length)
+        rows += metaRow("検索用embedding", ai.embedding_models.join(", "));
+      rows += `<tr class="metasep"><td colspan="2">メディア情報(ファイル全体)</td></tr>`;
+    }catch(e){ /* segment info is best-effort */ }
+  }
   for(const [key, label] of META_LABELS) rows += metaRow(label, info[key]);
   rows += metaRow("撮影開始 (ローカル時刻)", info.recording_start_local);
   if(info.metadata.timecode)

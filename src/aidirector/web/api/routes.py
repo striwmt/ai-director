@@ -249,6 +249,34 @@ def asset_metadata(
     }
 
 
+@router.get("/segments/{segment_id}/understanding")
+def segment_understanding(
+    segment_id: str,
+    memory: MediaMemory = Depends(get_memory),
+) -> dict:
+    """Everything the AI detected about one segment: the VLM's analysis
+    (with the model that produced it), the transcript span, and the
+    deterministic technical features."""
+    segment = memory.get_segment(segment_id)
+    if segment is None:
+        raise HTTPException(404, f"segment not found: {segment_id}")
+    u = build_understanding(segment, memory)
+    row = memory.conn.execute(
+        "SELECT provenance_json FROM semantic_annotations WHERE segment_id = ?",
+        (segment_id,),
+    ).fetchone()
+    provenance = json.loads(row["provenance_json"]) if row else None
+    embeddings = memory.conn.execute(
+        "SELECT model FROM embeddings WHERE owner_type = 'segment' AND owner_id = ?",
+        (segment_id,),
+    ).fetchall()
+    return {
+        "understanding": u.model_dump(),
+        "vision_provenance": provenance,
+        "embedding_models": [r["model"] for r in embeddings],
+    }
+
+
 @router.api_route("/segments/{segment_id}/video.mp4", methods=["GET", "HEAD"])
 def segment_video(
     segment_id: str,

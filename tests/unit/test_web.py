@@ -106,6 +106,24 @@ def test_segment_video_endpoint(client, populated, memory, tmp_path):
     assert seg_a["video"] == "/api/segments/seg_a/video.mp4"
 
 
+def test_segment_understanding_endpoint(client, populated, memory):
+    from aidirector.ai.schemas import Provenance, VisionAnalysis
+
+    memory.save_semantic_annotation(
+        "seg_a",
+        VisionAnalysis(description="駅に電車が到着する", mood=["calm"]),
+        Provenance(provider="transformers", model="Qwen/Qwen3-VL-4B-Instruct",
+                   prompt_version="vision-v1"),
+    )
+    memory.save_embedding("segment", "seg_a", "text", "test-embed", [0.1, 0.2])
+    info = client.get("/api/segments/seg_a/understanding").json()
+    assert info["understanding"]["description"] == "駅に電車が到着する"
+    assert info["understanding"]["mood"] == ["calm"]
+    assert info["vision_provenance"]["model"] == "Qwen/Qwen3-VL-4B-Instruct"
+    assert info["embedding_models"] == ["test-embed"]
+    assert client.get("/api/segments/seg_nope/understanding").status_code == 404
+
+
 def test_asset_metadata_endpoint(client, populated, memory):
     segs = client.get(f"/api/projects/{populated['project_id']}/segments").json()
     asset_id = segs["segments"][0]["asset_id"]
