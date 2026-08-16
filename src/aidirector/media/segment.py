@@ -143,7 +143,8 @@ def segment_video(
         config,
     )
     log.info(
-        "segmented %s: %d segments (%d cuts, %d silence boundaries)",
+        "segmented %s: %d segments (%d scene changes, %d silence boundaries"
+        " — 0 of each is normal for a short single-shot clip)",
         video.name, len(segments), len(scenes), len(silences),
     )
     return segments

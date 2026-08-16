@@ -100,6 +100,18 @@ def prepare_asset(
         segments = memory.list_segments(asset.id)
         if not segments:
             duration = asset.duration or 0.0
+            if duration <= 0:
+                # Rare (probe found no duration) — recover it from the proxy
+                # so the asset still enters Media Memory as a segment.
+                from .media.probe import probe_file
+
+                duration = probe_file(proxy_path).duration or 0.0
+                if duration <= 0:
+                    log.warning(
+                        "%s has no measurable duration; it cannot be "
+                        "segmented and will never be selectable",
+                        asset.file_name,
+                    )
             segments = segment_video(
                 asset.id, proxy_path, duration, config.segmentation
             )
