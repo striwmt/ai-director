@@ -71,9 +71,11 @@ async def test_generate_structured_valid_first_try():
         [Message(role="user", content="plan")], _Answer
     )
     assert answer == _Answer(title="quiet trip", count=3)
-    # The schema instruction is appended as a trailing system message.
-    assert calls[0][-1]["role"] == "system"
-    assert "JSON schema" in calls[0][-1]["content"]
+    # The schema instruction leads the conversation (strict chat templates
+    # reject system messages anywhere but the start).
+    assert calls[0][0]["role"] == "system"
+    assert "JSON schema" in calls[0][0]["content"]
+    assert calls[0][-1]["role"] == "user"
 
 
 async def test_generate_structured_repairs_invalid_output():

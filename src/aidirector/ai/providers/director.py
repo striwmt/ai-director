@@ -23,6 +23,27 @@ T = TypeVar("T", bound=BaseModel)
 _MAX_ATTEMPTS = 3
 
 
+def _chat_with_schema(messages: list[Message], schema_text: str) -> list[dict]:
+    """Fold the JSON-schema instruction into the LEADING system message.
+
+    Strict chat templates (Qwen3.8+) reject system messages anywhere but
+    the start of the conversation.
+    """
+    instruction = (
+        "Respond with a single JSON object matching this JSON schema, "
+        "with no extra commentary:\n" + schema_text
+    )
+    chat: list[dict] = [{"role": m.role, "content": m.content} for m in messages]
+    if chat and chat[0]["role"] == "system":
+        chat[0] = {
+            "role": "system",
+            "content": f"{chat[0]['content']}\n\n{instruction}",
+        }
+    else:
+        chat.insert(0, {"role": "system", "content": instruction})
+    return chat
+
+
 class OpenAICompatibleDirectorProvider:
     """Structured generation over POST /v1/chat/completions.
 
@@ -54,17 +75,7 @@ class OpenAICompatibleDirectorProvider:
         assert self._client is not None, "provider not loaded"
         schema = response_model.model_json_schema()
         schema_text = json.dumps(schema, ensure_ascii=False)
-
-        chat: list[dict] = [{"role": m.role, "content": m.content} for m in messages]
-        chat.append(
-            {
-                "role": "system",
-                "content": (
-                    "Respond with a single JSON object matching this JSON schema, "
-                    "with no extra commentary:\n" + schema_text
-                ),
-            }
-        )
+        chat = _chat_with_schema(messages, schema_text)
 
         response_format = {
             "type": "json_schema",
@@ -225,16 +236,7 @@ class TransformersDirectorProvider:
         schema_text = json.dumps(
             response_model.model_json_schema(), ensure_ascii=False
         )
-        chat: list[dict] = [{"role": m.role, "content": m.content} for m in messages]
-        chat.append(
-            {
-                "role": "system",
-                "content": (
-                    "Respond with a single JSON object matching this JSON schema, "
-                    "with no extra commentary:\n" + schema_text
-                ),
-            }
-        )
+        chat = _chat_with_schema(messages, schema_text)
 
         last_error: Exception | None = None
         for attempt in range(1, _MAX_ATTEMPTS + 1):
