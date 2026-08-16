@@ -32,6 +32,19 @@ models:
   #         base_url: http://127.0.0.1:8102/v1
   #         model: qwen3-8b-q4
   #         context_length: 16384
+  #
+  # Bigger director on a 16GB GPU (needs llama.cpp and ~24GB free RAM):
+  # a MoE model with a small active size keeps its experts in system RAM
+  # (--n-cpu-moe) and only attention/KV on the GPU — put this in
+  # config/local.yaml (gitignored, merged over this file):
+  #       models:
+  #         director:
+  #           provider: llama-server
+  #           model: unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M   # ~20GB download
+  #           context_length: 16384
+  #           extra: { binary: llama-server, port: 8102,
+  #                    startup_timeout: 1800,
+  #                    extra_args: ["--n-cpu-moe", "99"] }
   director:
     provider: transformers
     model: Qwen/Qwen3-8B

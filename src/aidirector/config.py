@@ -211,7 +211,13 @@ def load_config(
     root = project_root or Path.cwd()
     data: dict[str, Any] = {}
 
-    for candidate in (root / "config" / "default.yaml", root / "config" / "models.yaml"):
+    # local.yaml: machine-specific overrides (bigger director model, custom
+    # ports, …) — gitignored, merged after the shipped defaults.
+    for candidate in (
+        root / "config" / "default.yaml",
+        root / "config" / "models.yaml",
+        root / "config" / "local.yaml",
+    ):
         if candidate.is_file():
             data = _deep_merge(data, _load_yaml(candidate))
 

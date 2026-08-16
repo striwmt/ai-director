@@ -22,3 +22,4 @@ desktop/tauri/src-tauri/target/
 
 # User-supplied vendor LUTs (licensed, not distributed)
 assets/luts/*.cube
+config/local.yaml

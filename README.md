@@ -214,6 +214,12 @@ slots to the footage your saved plans have used least, so repeated
 drafts explore the whole library. Want more footage in one video?
 Raise the target duration.
 
+**I want a stronger director LLM** — models are config-swappable. Even
+on a 16GB GPU you can run a MoE model (e.g. Qwen3.6-35B-A3B) with its
+experts in system RAM (llama.cpp `--n-cpu-moe`, ~24GB free RAM needed)
+for big-model judgement. Put it in `config/local.yaml` (gitignored,
+machine-local) — see the commented recipe in `config/models.yaml`.
+
 **Draft quality is so-so** — be specific in the prompt (order, mood, what
 must stay). More footage and intact recording-time metadata both help.
 

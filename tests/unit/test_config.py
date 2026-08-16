@@ -14,12 +14,36 @@ def test_defaults_without_files(tmp_path):
     assert config.models.speech.provider == "faster-whisper"
 
 
-def test_repo_config_loads():
-    config = load_config(project_root=PROJECT_ROOT)
+def test_repo_config_loads(tmp_path):
+    # Copy the shipped configs only — a developer's config/local.yaml
+    # (gitignored) must not leak into this test.
+    import shutil
+
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    for name in ("default.yaml", "models.yaml"):
+        source = PROJECT_ROOT / "config" / name
+        if source.is_file():
+            shutil.copy(source, config_dir / name)
+    config = load_config(project_root=tmp_path)
     assert config.director.default_profile == "travel_vlog"
     assert config.models.director.provider == "transformers"
     assert config.models.director.context_length == 16384
     assert config.models.director.extra["quantization"] == "4bit"
+
+
+def test_local_yaml_overrides_shipped_defaults(tmp_path):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "models.yaml").write_text(
+        "models:\n  director:\n    provider: transformers\n    model: small\n"
+    )
+    (config_dir / "local.yaml").write_text(
+        "models:\n  director:\n    provider: llama-server\n    model: big\n"
+    )
+    config = load_config(project_root=tmp_path)
+    assert config.models.director.provider == "llama-server"
+    assert config.models.director.model == "big"
 
 
 def test_explicit_file_overrides(tmp_path):
