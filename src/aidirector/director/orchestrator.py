@@ -20,11 +20,13 @@ from ..memory.search import MediaSearch
 from ..perception.interpretation import SegmentUnderstanding, build_understanding
 from .beat_planner import plan_beats
 from .critic import critique_edit
+from .beat_planner import uniquify_outline
 from .editor import (
     dedupe_assets,
     describe_selection,
     edit_sequence,
     enforce_target_duration,
+    pin_story_beats,
     sort_chronologically,
 )
 from .music import (
@@ -254,7 +256,7 @@ async def run_director(
     profile: DirectorProfile = load_director_profile(
         config.director.profiles_dir, profile_name
     )
-    outline = outline or []
+    outline = uniquify_outline(outline or [])
     intent = EditPlanIntent(
         target_duration=target_duration, profile=profile_name,
         user_prompt=user_prompt, outline=outline,
@@ -319,6 +321,7 @@ async def run_director(
         # candidates shot at >= T. This keeps the final timeline monotonic
         # even though a user flow forbids reordering across sections.
         time_frontier: str | None = None
+        beat_of_segment: dict[str, str] = {}
         for beat_idx, beat in enumerate(beats.beats):
             tick(done=beat_idx, total=len(beats.beats),
                  item=f"素材選択: {beat.name}")
@@ -327,12 +330,25 @@ async def run_director(
                 limit=config.director.candidates_per_beat, exclude=used_ids,
                 usage_counts=usage_counts,
             )
+            guidance = ""
             if enforce_chronology:
                 candidates = filter_candidates_by_time(candidates, time_frontier)
+                # Oldest first: the flow consumes the shoot in real order,
+                # so early sections should take the earliest fitting shots
+                # and leave later footage for later sections.
+                candidates.sort(
+                    key=lambda c: (c.recorded_at is None, c.recorded_at or "")
+                )
+                guidance = (
+                    "The story follows real chronology. Prefer the EARLIEST "
+                    "candidates (see 'shot at') that serve this beat — later "
+                    "footage must stay available for later beats."
+                )
             for c in candidates:
                 segments_by_id[c.segment_id] = c
             selection = await select_for_beat(
                 ai, story=story, beat=beat, candidates=candidates, used=used,
+                guidance=guidance,
             )
             chosen = [
                 segments_by_id[c.segment_id]
@@ -342,6 +358,8 @@ async def run_director(
             used.extend(chosen)
             if enforce_chronology:
                 time_frontier = advance_time_frontier(time_frontier, chosen)
+            for c in chosen:
+                beat_of_segment.setdefault(c.segment_id, beat.name)
             used_ids.update(c.segment_id for c in chosen)
             if not reuse_allowed:
                 # Exclude every other segment of the chosen source videos
@@ -374,6 +392,11 @@ async def run_director(
             constraint_lines.append(
                 "Order ALL clips strictly by recording time, oldest first."
             )
+        if outline:
+            constraint_lines.append(
+                "Keep every segment inside the beat it is listed under — "
+                "never move a segment to a different beat."
+            )
         constraints = "\n".join(constraint_lines)
 
         revision_notes = ""
@@ -394,6 +417,7 @@ async def run_director(
             )
             # Deterministic guarantees before the critic sees the draft, so
             # revision rounds compensate for any dropped/moved clips.
+            sequence = pin_story_beats(sequence, beat_of_segment)
             if not reuse_allowed:
                 sequence = dedupe_assets(sequence, segments_by_id)
             if enforce_chronology:

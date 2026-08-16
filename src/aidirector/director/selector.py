@@ -137,6 +137,7 @@ async def select_for_beat(
     candidates: list[SegmentUnderstanding],
     used: list[SegmentUnderstanding],
     max_choices: int = 4,
+    guidance: str = "",
 ) -> BeatSelection:
     candidates = _filter_technically_bad(candidates)
     if not candidates:
@@ -154,6 +155,7 @@ async def select_for_beat(
         candidates=candidate_lines,
         used_summary=used_summary,
         max_choices=max_choices,
+        guidance=guidance,
     )
     selection = await ai.generate_structured(
         [Message(role="user", content=prompt)], BeatSelection

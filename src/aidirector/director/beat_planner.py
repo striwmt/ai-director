@@ -26,6 +26,18 @@ def parse_outline(text: str | None) -> list[str]:
     return [part.strip() for part in _OUTLINE_SEPARATORS.split(text) if part.strip()]
 
 
+def uniquify_outline(outline: list[str]) -> list[str]:
+    """Repeated section names (電車移動 out and back) get instance
+    suffixes — beat identity is by name everywhere downstream, so
+    duplicates would merge into one section."""
+    counts: dict[str, int] = {}
+    result: list[str] = []
+    for name in outline:
+        counts[name] = counts.get(name, 0) + 1
+        result.append(name if counts[name] == 1 else f"{name} ({counts[name]})")
+    return result
+
+
 def enforce_outline(
     plan: BeatPlan, outline: list[str], target_duration: float
 ) -> BeatPlan:

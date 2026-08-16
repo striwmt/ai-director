@@ -129,6 +129,24 @@ def sort_chronologically(
     return SequencePlan(clips=clips)
 
 
+def pin_story_beats(
+    plan: SequencePlan,
+    beat_of: dict[str, str],
+) -> SequencePlan:
+    """Which beat a segment was selected for is a pipeline fact — the
+    sequence editor may not move clips between sections (it silently
+    defeats the per-beat chronology guarantees)."""
+    for clip in plan.clips:
+        pinned = beat_of.get(clip.segment_id)
+        if pinned is not None and clip.story_beat != pinned:
+            log.info(
+                "clip %s relabeled %r -> %r (selection beat wins)",
+                clip.segment_id, clip.story_beat, pinned,
+            )
+            clip.story_beat = pinned
+    return plan
+
+
 def dedupe_assets(
     plan: SequencePlan,
     segments_by_id: dict[str, SegmentUnderstanding],

@@ -14,6 +14,8 @@ purpose: {beat_purpose}
 ## Already used in earlier beats (avoid repeating similar content)
 {used_summary}
 
+{guidance}
+
 ## Task
 Pick the best 1-{max_choices} segments for this beat, in the order they
 should appear. Judge by story relevance, variety versus what is already

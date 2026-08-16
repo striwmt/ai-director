@@ -148,3 +148,24 @@ def test_time_frontier_filtering():
     # The frontier only moves forward.
     assert advance_time_frontier(frontier, [morning]) == frontier
     assert advance_time_frontier(frontier, [evening]) == "2026-08-15T18:00:00"
+
+
+def test_uniquify_outline():
+    from aidirector.director.beat_planner import uniquify_outline
+
+    assert uniquify_outline(["出発", "電車移動", "ランチ", "電車移動", "電車移動"]) == [
+        "出発", "電車移動", "ランチ", "電車移動 (2)", "電車移動 (3)",
+    ]
+    assert uniquify_outline([]) == []
+
+
+def test_pin_story_beats():
+    from aidirector.director.editor import pin_story_beats
+
+    plan = SequencePlan(clips=[
+        make_clip("a", "電車移動"),   # editor relabeled it; selection said 出発
+        make_clip("b", "電車移動"),
+        make_clip("c", "invented"),  # unknown segment keeps its label
+    ])
+    pinned = pin_story_beats(plan, {"a": "出発", "b": "電車移動"})
+    assert [c.story_beat for c in pinned.clips] == ["出発", "電車移動", "invented"]
