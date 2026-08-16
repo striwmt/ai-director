@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Callable
 
 from ..ai.services import AIServices
 from ..config import AppConfig
@@ -224,8 +225,18 @@ async def run_director(
     subtitles: bool | None = None,
     music_dir: Path | None = None,
     outline: list[str] | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> tuple[str, EditPlan]:
     """Run the full director pipeline. Returns (plan_id, edit_plan)."""
+
+    def tick(**details) -> None:
+        # Within-phase progress for the UI; phase-only callbacks are fine.
+        if progress is None:
+            return
+        try:
+            progress("director", **details)
+        except TypeError:
+            pass
     profile_name = profile_name or config.director.default_profile
     profile: DirectorProfile = load_director_profile(
         config.director.profiles_dir, profile_name
@@ -240,6 +251,7 @@ async def run_director(
 
     try:
         # 1. Story
+        tick(item="ストーリー構成")
         summary = build_project_summary(memory, project_id)
         story_prompt = user_prompt
         if outline:
@@ -258,6 +270,7 @@ async def run_director(
 
         # 2. Beats — a user outline becomes the beat structure verbatim
         # (enforce_outline guarantees names and order in code).
+        tick(item="ビート設計")
         beats = await plan_beats(
             ai, story=story, target_duration=target_duration, outline=outline or None,
         )
@@ -286,7 +299,9 @@ async def run_director(
         used_ids: set[str] = set()
         selections: list[tuple[BeatSelection, list[SegmentUnderstanding]]] = []
         segments_by_id: dict[str, SegmentUnderstanding] = {}
-        for beat in beats.beats:
+        for beat_idx, beat in enumerate(beats.beats):
+            tick(done=beat_idx, total=len(beats.beats),
+                 item=f"素材選択: {beat.name}")
             candidates = await retrieve_candidates(
                 search, memory, project_id, beat, story,
                 limit=config.director.candidates_per_beat, exclude=used_ids,
@@ -342,6 +357,8 @@ async def run_director(
         best: tuple[float, SequencePlan] | None = None  # (fitness, plan)
         critique = None
         for round_no in range(config.director.max_revision_loops + 1):
+            tick(done=round_no, total=config.director.max_revision_loops + 1,
+                 item=f"シーケンス生成と批評 (ラウンド{round_no + 1})")
             sequence = await edit_sequence(
                 ai,
                 story=story,
@@ -428,6 +445,7 @@ async def run_director(
             music_dir if music_dir is not None else config.output.music_dir
         )
         if effective_music_dir is not None:
+            tick(item="BGM選曲")
             tracks = list_music_tracks(Path(effective_music_dir))
             if tracks:
                 try:

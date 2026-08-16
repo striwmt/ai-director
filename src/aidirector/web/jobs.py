@@ -37,26 +37,42 @@ class PipelineJob:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._state: dict = {"status": "idle", "phase": None, "log": [],
-                             "plan_id": None, "error": None, "params": None}
+        self._state: dict = {"status": "idle", "phase": None, "progress": None,
+                             "log": [], "plan_id": None, "error": None,
+                             "params": None}
         self._handler: _RingBufferHandler | None = None
 
     def start(self, params: dict, work: Callable[[Callable[[str], None]], str]) -> bool:
         """Start ``work(progress)`` in a thread; returns False if busy.
 
-        ``work`` receives a progress(phase) callback and returns the plan id.
+        ``work`` receives a progress callback and returns the plan id. The
+        callback takes the phase name, plus optional done/total counters and
+        an item label for within-phase progress: progress("vision", done=3,
+        total=81, item="CLIP_0042.MP4"). Phase-only calls reset the detail.
         """
         with self._lock:
             if self._state["status"] == "running":
                 return False
             handler = _RingBufferHandler()
             self._handler = handler
-            self._state = {"status": "running", "phase": "starting", "log": [],
+            self._state = {"status": "running", "phase": "starting",
+                           "progress": None, "log": [],
                            "plan_id": None, "error": None, "params": params}
 
-        def progress(phase: str) -> None:
+        def progress(
+            phase: str,
+            done: int | None = None,
+            total: int | None = None,
+            item: str | None = None,
+        ) -> None:
+            detail = (
+                {"done": done, "total": total, "item": item}
+                if (done is not None or total is not None or item is not None)
+                else None
+            )
             with self._lock:
                 self._state["phase"] = phase
+                self._state["progress"] = detail
 
         def _run() -> None:
             root = logging.getLogger("aidirector")

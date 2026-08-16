@@ -128,6 +128,17 @@ async def analyze_music_library(
         log.info("music: all %d tracks already analyzed", len(tracks))
         return 0
     log.info("music: analyzing %d of %d tracks", len(pending), len(tracks))
+
+    def tick(done: int, stage: str, name: str) -> None:
+        # Within-phase progress; phase-only callbacks are fine.
+        if progress is None:
+            return
+        try:
+            progress("music", done=done, total=len(pending),
+                     item=f"{stage}: {name}")
+        except TypeError:
+            pass
+
     cache_dir = config.paths.cache_dir / "music"
     # analyzed_at is only set when every enabled component succeeded for
     # that record — a failed component is retried on the next run.
@@ -139,7 +150,8 @@ async def analyze_music_library(
     try:
         from .music_features import extract_music_features
 
-        for track, record in pending:
+        for i, (track, record) in enumerate(pending):
+            tick(i, "テンポ/キー解析", track.file_name)
             start, dur = _excerpt_window(track.duration, _DSP_SECONDS)
             wav = _decode_excerpt(
                 track.path, cache_dir / f"{record.id}_dsp.wav",
@@ -166,7 +178,8 @@ async def analyze_music_library(
             [_TAG_TEMPLATE.format(tag=tag) for _, tag in flat_tags]
         )
         label = ai.provider_name("music_embedding")
-        for track, record in pending:
+        for i, (track, record) in enumerate(pending):
+            tick(i, "タグ付け (CLAP)", track.file_name)
             start, dur = _excerpt_window(track.duration, _CLAP_SECONDS)
             wav = _decode_excerpt(
                 track.path, cache_dir / f"{record.id}_clap.wav",
@@ -197,7 +210,8 @@ async def analyze_music_library(
         options = TranscriptionOptions(
             word_timestamps=False, vad=True, condition_on_previous_text=False,
         )
-        for track, record in pending:
+        for i, (track, record) in enumerate(pending):
+            tick(i, "歌詞検出", track.file_name)
             transcript = await ai.transcribe(track.path, options)
             text = transcript.text.strip()
             spoken = sum(s.end - s.start for s in transcript.segments)
@@ -220,7 +234,8 @@ async def analyze_music_library(
     understanding_cfg = config.models.music_understanding
     if describe_enabled:
         try:
-            for track, record in pending:
+            for i, (track, record) in enumerate(pending):
+                tick(i, "楽曲説明 (音声LLM)", track.file_name)
                 max_seconds = float(
                     understanding_cfg.extra.get("max_audio_seconds", 30)
                 )

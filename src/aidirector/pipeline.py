@@ -135,6 +135,21 @@ def prepare_asset(
         return None
 
 
+def _notify(
+    progress: Callable[[str], None] | None,
+    phase: str,
+    **details,
+) -> None:
+    """Report progress; falls back to phase-only for callbacks that don't
+    accept done/total/item keywords."""
+    if progress is None:
+        return
+    try:
+        progress(phase, **details)
+    except TypeError:
+        progress(phase)
+
+
 async def run_analyze(
     footage: Path,
     config: AppConfig,
@@ -174,7 +189,9 @@ async def run_analyze(
     # -- Phase A: deterministic (no AI) --------------------------------
     notify("segments")
     prepared: dict[str, Path] = {}
-    for asset in assets:
+    for i, asset in enumerate(assets):
+        _notify(progress, "segments", done=i, total=len(assets),
+                item=asset.file_name)
         proxy = prepare_asset(asset, config, memory, registry)
         if proxy is not None:
             prepared[asset.id] = proxy
@@ -182,11 +199,13 @@ async def run_analyze(
     # -- Phase B: speech (Whisper loaded once) --------------------------
     notify("speech")
     try:
-        for asset in assets:
-            if asset.id not in prepared:
-                continue
-            if asset.metadata.has_audio:
-                await transcribe_asset(asset, ai, config, memory)
+        speech_assets = [
+            a for a in assets if a.id in prepared and a.metadata.has_audio
+        ]
+        for i, asset in enumerate(speech_assets):
+            _notify(progress, "speech", done=i, total=len(speech_assets),
+                    item=asset.file_name)
+            await transcribe_asset(asset, ai, config, memory)
         await ai.runtime.release("speech")
     except Exception as exc:
         log.warning("speech phase skipped: %s", exc)
@@ -194,13 +213,21 @@ async def run_analyze(
     # -- Phase C: vision (VLM loaded once) ------------------------------
     notify("vision")
     try:
+        segments_of: dict[str, list] = {
+            a.id: memory.list_segments(a.id) for a in assets if a.id in prepared
+        }
+        total_segments = sum(len(s) for s in segments_of.values())
+        seen = 0
         for asset in assets:
             if asset.id not in prepared:
                 continue
             transcript = memory.get_transcript(asset.id)
-            segments = memory.list_segments(asset.id)
+            segments = segments_of[asset.id]
             excerpts = segment_transcripts(transcript, segments)
             for segment in segments:
+                _notify(progress, "vision", done=seen, total=total_segments,
+                        item=asset.file_name)
+                seen += 1
                 frames = memory.list_frames(segment.id)
                 await analyze_segment_vision(
                     asset, segment, frames, excerpts.get(segment.id, ""),
@@ -217,6 +244,8 @@ async def run_analyze(
             build_understanding(segment, memory)
             for segment in memory.list_project_segments(project.id)
         ]
+        _notify(progress, "embedding", done=0, total=len(understandings),
+                item=f"{len(understandings)} セグメント")
         await embed_segments(understandings, ai, memory)
         await ai.runtime.release("embedding")
     except Exception as exc:
@@ -292,7 +321,7 @@ async def run_full_edit(
         project_id, config, memory, ai,
         user_prompt=prompt, target_duration=duration, profile_name=profile,
         captions=captions, caption_format=caption_format, subtitles=subtitles,
-        music_dir=music_dir, outline=outline,
+        music_dir=music_dir, outline=outline, progress=progress,
     )
     await ai.runtime.release_all()
 

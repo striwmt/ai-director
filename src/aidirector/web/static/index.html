@@ -154,6 +154,10 @@
   }
   .phase.active { border-color:var(--patina); color:var(--patina); font-weight:600; }
   .phase.done2 { color:var(--ink); border-color:var(--muted); }
+  #phaseProgress { margin:10px 0 4px; }
+  .pbar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; }
+  #pbarFill { height:100%; width:0; background:var(--patina); transition:width .4s; }
+  #phaseDetail { margin-top:5px; }
   #joblog {
     background:#0e1013; border:1px solid var(--line); border-radius:6px;
     padding:10px 12px; height:180px; overflow-y:auto; font-size:12px;
@@ -341,6 +345,10 @@
   <div id="progressView">
     <h2>作成中…</h2>
     <div class="phases" id="phaseChips"></div>
+    <div id="phaseProgress" style="display:none;">
+      <div class="pbar"><div id="pbarFill"></div></div>
+      <div class="fname mono" id="phaseDetail"></div>
+    </div>
     <pre id="joblog"></pre>
     <div id="jobError"></div>
     <div style="margin-top:10px;">
@@ -1112,7 +1120,10 @@ async function startMusicAnalyze(){
     try{
       const st = await api("/api/music/analyze/status");
       if(st.status === "running"){
-        $("mlInfo").textContent = "解析中… " + (st.log.length ? st.log[st.log.length-1] : "");
+        const pr = st.progress;
+        $("mlInfo").textContent = pr && pr.item
+          ? `解析中… ${pr.total != null ? `${(pr.done||0)+1}/${pr.total} ` : ""}${pr.item}`
+          : "解析中… " + (st.log.length ? st.log[st.log.length-1] : "");
         musicPollTimer = setTimeout(poll, 2000);
         return;
       }
@@ -1337,6 +1348,17 @@ function pollCreate(){
   const tick = async () => {
     const st = await api("/api/create/status");
     renderPhases(st.phase);
+    const pr = st.progress;
+    const box = $("phaseProgress");
+    if(st.status === "running" && pr && (pr.total || pr.item)){
+      box.style.display = "block";
+      const pct = pr.total ? Math.round(100 * (pr.done || 0) / pr.total) : 0;
+      $("pbarFill").style.width = pct + "%";
+      $("phaseDetail").textContent =
+        (pr.total != null ? `${(pr.done || 0) + 1}/${pr.total} ` : "") + (pr.item || "");
+    } else {
+      box.style.display = "none";
+    }
     const logEl = $("joblog");
     logEl.textContent = (st.log || []).join("\n");
     logEl.scrollTop = logEl.scrollHeight;
