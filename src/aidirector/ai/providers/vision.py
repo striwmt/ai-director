@@ -164,15 +164,11 @@ class TransformersVisionProvider:
         log.info("loaded VLM %s on %s", self._cfg.model, device)
 
     async def unload(self) -> None:
+        from ._cuda import free_cuda_memory
+
         self._model = None
         self._processor = None
-        try:
-            import torch
-
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        except ImportError:
-            pass
+        free_cuda_memory()
 
     async def analyze_segment(
         self, images: list[ImageInput], context: VisionContext

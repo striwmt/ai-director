@@ -321,14 +321,18 @@ async def run_full_edit(
             await ai.runtime.release_all()
 
     notify("director")
-    plan_id, plan = await run_director(
-        project_id, config, memory, ai,
-        user_prompt=prompt, target_duration=duration, profile_name=profile,
-        captions=captions, caption_format=caption_format, subtitles=subtitles,
-        music_dir=music_dir, outline=outline, canvas=canvas,
-        progress=progress,
-    )
-    await ai.runtime.release_all()
+    try:
+        plan_id, plan = await run_director(
+            project_id, config, memory, ai,
+            user_prompt=prompt, target_duration=duration, profile_name=profile,
+            captions=captions, caption_format=caption_format, subtitles=subtitles,
+            music_dir=music_dir, outline=outline, canvas=canvas,
+            progress=progress,
+        )
+    finally:
+        # Always release — a director failure must not leave a multi-GB
+        # model (or an owned llama-server process) holding the GPU.
+        await ai.runtime.release_all()
 
     validate_edit_plan(plan, memory)
 

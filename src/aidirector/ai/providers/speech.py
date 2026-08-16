@@ -97,7 +97,10 @@ class FasterWhisperProvider:
         raise ProviderError(f"could not load whisper model: {last_error}")
 
     async def unload(self) -> None:
+        from ._cuda import free_cuda_memory
+
         self._model = None
+        free_cuda_memory()
 
     async def transcribe(self, audio: Path, options: TranscriptionOptions) -> Transcript:
         if self._model is None:

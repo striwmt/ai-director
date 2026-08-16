@@ -99,14 +99,10 @@ class SentenceTransformersEmbeddingProvider:
         log.info("loaded embedding model %s on %s", self._cfg.model, device)
 
     async def unload(self) -> None:
-        self._model = None
-        try:
-            import torch
+        from ._cuda import free_cuda_memory
 
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        except ImportError:
-            pass
+        self._model = None
+        free_cuda_memory()
 
     def _encode(self, inputs: list[Any]) -> list[Embedding]:
         vectors = self._model.encode(inputs, normalize_embeddings=True)
@@ -161,15 +157,11 @@ class TransformersEmbeddingProvider:
         log.info("loaded embedding model %s on %s", self._cfg.model, device)
 
     async def unload(self) -> None:
+        from ._cuda import free_cuda_memory
+
         self._model = None
         self._tokenizer = None
-        try:
-            import torch
-
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        except ImportError:
-            pass
+        free_cuda_memory()
 
     async def embed_text(self, texts: list[str]) -> list[Embedding]:
         if self._model is None:

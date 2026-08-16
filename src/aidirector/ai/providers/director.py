@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import gc
 import json
 from typing import Any, TypeVar
 
@@ -193,16 +192,11 @@ class TransformersDirectorProvider:
         log.info("loaded director LLM %s on %s", self._cfg.model, device)
 
     async def unload(self) -> None:
+        from ._cuda import free_cuda_memory
+
         self._model = None
         self._tokenizer = None
-        gc.collect()
-        try:
-            import torch
-
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        except ImportError:
-            pass
+        free_cuda_memory()
 
     def _generate_sync(self, chat: list[dict], thinking: bool) -> str:
         import torch

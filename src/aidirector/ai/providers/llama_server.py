@@ -55,11 +55,17 @@ class ManagedLlamaServer:
         command = [
             binary, *model_flag,
             "--host", "127.0.0.1", "--port", str(self.port),
-            "-ngl", str(extra.get("gpu_layers", 99)),
             "-c", str(self._cfg.context_length or 16384),
             "-fa", "on", "--jinja", "--reasoning-budget", "0",
             "--cache-type-k", "q8_0", "--cache-type-v", "q8_0",
         ]
+        # gpu_layers: a number forces -ngl; "auto" omits the flag so recent
+        # llama.cpp fits as many layers as free VRAM allows instead of
+        # dying on cudaMalloc (older builds would run CPU-only — keep 99
+        # as the safe default there).
+        gpu_layers = extra.get("gpu_layers", 99)
+        if str(gpu_layers).lower() != "auto":
+            command += ["-ngl", str(gpu_layers)]
         command += [str(a) for a in extra.get("extra_args", [])]
         return command
 
@@ -75,6 +81,12 @@ class ManagedLlamaServer:
         if await self.healthy():
             log.info("reusing running llama-server on port %d", self.port)
             return
+        # The server is a separate process: flush THIS process's torch
+        # allocator first, or leftover cached blocks (multiple GB after
+        # an in-process model phase) OOM the server's cudaMalloc.
+        from ._cuda import free_cuda_memory
+
+        free_cuda_memory()
         command = self.build_command()
         log_file = tempfile.NamedTemporaryFile(
             prefix="llama-server-", suffix=".log", delete=False
