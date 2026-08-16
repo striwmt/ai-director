@@ -78,11 +78,18 @@ def build_project_summary(memory: MediaMemory, project_id: str, limit: int = 40)
         f"{len(assets)} video files, {len(segments)} segments, "
         f"{total_duration / 60:.1f} minutes of footage total.",
     ]
-    times = sorted(
-        a.metadata.creation_time for a in assets if a.metadata.creation_time
-    )
-    if times:
-        lines.append(f"Recorded between {times[0]} and {times[-1]}.")
+    from ..perception.interpretation import parse_creation_time, to_local_time
+
+    moments = []
+    for a in assets:
+        moment = to_local_time(parse_creation_time(a.metadata.creation_time))
+        if moment is not None:
+            moments.append(moment.replace(tzinfo=None))
+    if moments:
+        moments.sort()
+        lines.append(
+            f"Recorded between {moments[0].isoformat()} and {moments[-1].isoformat()} (local time)."
+        )
 
     lines.append("\nSample of what the footage contains:")
     step = max(1, len(segments) // limit)
@@ -100,11 +107,11 @@ _PUNCT_ONLY_RE = re.compile(r"^[\s:\-–—・/|,.]+$")
 
 
 def _caption_token_values(place: str, recorded_at: str | None) -> dict[str, str]:
-    from ..perception.interpretation import parse_creation_time
+    from ..perception.interpretation import parse_creation_time, to_local_time
 
     values = {"PLACE": place, "DATE": "", "TIME": "",
               "YYYY": "", "MO": "", "DD": "", "HH": "", "MM": ""}
-    moment = parse_creation_time(recorded_at)
+    moment = to_local_time(parse_creation_time(recorded_at))
     if moment is not None:
         values.update(
             DATE=moment.strftime("%Y-%m-%d"),

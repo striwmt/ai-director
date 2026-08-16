@@ -25,9 +25,19 @@ def parse_creation_time(value: str | None) -> datetime | None:
         return None
 
 
+def to_local_time(moment: datetime | None) -> datetime | None:
+    """Timezone-aware camera timestamps (e.g. DJI's UTC "...Z") become the
+    machine's local time — what captions, prompts and the UI should show.
+    Naive timestamps are already camera-local and pass through."""
+    if moment is None or moment.tzinfo is None:
+        return moment
+    return moment.astimezone()
+
+
 def segment_recorded_at(creation_time: str | None, offset_seconds: float) -> str | None:
-    """Absolute wall-clock time a segment starts at, if the asset is dated."""
-    start = parse_creation_time(creation_time)
+    """Absolute wall-clock time a segment starts at (local timezone), if
+    the asset is dated."""
+    start = to_local_time(parse_creation_time(creation_time))
     if start is None:
         return None
     return (start + timedelta(seconds=offset_seconds)).isoformat()

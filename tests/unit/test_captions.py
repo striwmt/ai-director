@@ -37,7 +37,7 @@ INTENT = EditPlanIntent(target_duration=30)
 def test_build_caption_place_and_time():
     caption = build_caption(
         make_clip("s1", "hook", location="平等院"),
-        make_understanding("s1", "2026-08-01T09:30:00+00:00"),
+        make_understanding("s1", "2026-08-01T09:30:00"),
     )
     assert caption.text == "平等院"
     assert caption.secondary == "2026-08-01 09:30"
@@ -46,7 +46,7 @@ def test_build_caption_place_and_time():
 def test_build_caption_time_only_promotes_to_main():
     caption = build_caption(
         make_clip("s1", "hook"),
-        make_understanding("s1", "2026-08-01T09:30:00+00:00"),
+        make_understanding("s1", "2026-08-01T09:30:00"),
     )
     assert caption.text == "2026-08-01 09:30"
     assert caption.secondary == ""
@@ -54,7 +54,7 @@ def test_build_caption_time_only_promotes_to_main():
 
 def test_caption_format_user_template():
     clip = make_clip("s1", "hook", location="川越駅")
-    u = make_understanding("s1", "2026-08-01T09:12:00+00:00")
+    u = make_understanding("s1", "2026-08-01T09:12:00")
     caption = build_caption(clip, u, "{HH}:{MM} {PLACE}")
     assert caption.text == "09:12 川越駅"
     assert caption.secondary == ""
@@ -69,7 +69,7 @@ def test_caption_format_missing_time_drops_orphan_punctuation():
 
 def test_caption_format_two_lines_and_tokens():
     clip = make_clip("s1", "hook", location="平等院")
-    u = make_understanding("s1", "2026-08-01T11:30:00+00:00")
+    u = make_understanding("s1", "2026-08-01T11:30:00")
     caption = build_caption(clip, u, "{PLACE}\\n{MO}/{DD} {HH}:{MM}")
     assert caption.text == "平等院"
     assert caption.secondary == "08/01 11:30"

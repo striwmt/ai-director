@@ -64,6 +64,10 @@ def _clip_wallclock(
     base = parse_creation_time(segment.recorded_at)
     if base is None:
         return None
+    if base.tzinfo is not None:
+        # Normalize to naive local so aware and naive timestamps can be
+        # compared in one sort (footage from mixed cameras).
+        base = base.astimezone().replace(tzinfo=None)
     return base + timedelta(seconds=clip.source_in - segment.start)
 
 

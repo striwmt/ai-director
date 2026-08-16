@@ -57,9 +57,11 @@ def test_display_size_missing():
 
 
 def test_segment_recorded_at():
+    # Naive (camera-local) input passes through unshifted; UTC-aware
+    # input becomes local time (covered in test_local_time.py).
     assert (
-        segment_recorded_at("2026-08-01T09:30:00.000000Z", 65.0)
-        == "2026-08-01T09:31:05+00:00"
+        segment_recorded_at("2026-08-01T09:30:00.000000", 65.0)
+        == "2026-08-01T09:31:05"
     )
     assert segment_recorded_at(None, 10.0) is None
     assert segment_recorded_at("not-a-date", 10.0) is None
@@ -100,7 +102,7 @@ def test_project_segments_chronological(memory):
 def test_understanding_carries_time_and_orientation(memory):
     project = memory.get_or_create_project("trip", Path("/footage"))
     asset = make_asset(project.id, "phone.mp4")
-    asset.metadata.creation_time = "2026-08-01T09:30:00Z"
+    asset.metadata.creation_time = "2026-08-01T09:30:00"
     asset.metadata.width = 1920
     asset.metadata.height = 1080
     asset.metadata.rotation = 90
