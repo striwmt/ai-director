@@ -54,6 +54,8 @@ from .schemas import (
 from .selector import (
     advance_time_frontier,
     filter_candidates_by_time,
+    filter_candidates_by_window,
+    plan_time_windows,
     retrieve_candidates,
     select_for_beat,
 )
@@ -316,34 +318,63 @@ async def run_director(
         used_ids: set[str] = set()
         selections: list[tuple[BeatSelection, list[SegmentUnderstanding]]] = []
         segments_by_id: dict[str, SegmentUnderstanding] = {}
-        # With enforced chronology, beats are consumed in real time:
-        # once a beat used footage shot at time T, later beats only see
-        # candidates shot at >= T. This keeps the final timeline monotonic
-        # even though a user flow forbids reordering across sections.
+        # Pass 1: semantic candidate pools per beat (no cross-beat
+        # exclusion yet). With enforced chronology the pools feed a DP
+        # that assigns each beat a capture-time window — beats consume
+        # the shoot strictly in order, so the final timeline is monotonic
+        # in real time by construction, not by prompt advice.
+        cpb = config.director.candidates_per_beat
+        beat_pool: list[list[SegmentUnderstanding]] = []
+        for beat_idx, beat in enumerate(beats.beats):
+            tick(done=beat_idx, total=len(beats.beats),
+                 item=f"候補検索: {beat.name}")
+            pool = await retrieve_candidates(
+                search, memory, project_id, beat, story,
+                limit=cpb * 2, exclude=set(), usage_counts=usage_counts,
+            )
+            beat_pool.append(pool)
+        windows = (
+            plan_time_windows(beat_pool) if enforce_chronology
+            else [(None, None)] * len(beat_pool)
+        )
+        if enforce_chronology:
+            log.info("beat time windows: %s", [
+                (b.name, (w[0] or "")[11:16], (w[1] or "")[11:16])
+                for b, w in zip(beats.beats, windows)
+            ])
+
+        # Pass 2: sequential selection inside each beat's window; the
+        # frontier is a final guard for undated footage and relaxations.
         time_frontier: str | None = None
         beat_of_segment: dict[str, str] = {}
         for beat_idx, beat in enumerate(beats.beats):
             tick(done=beat_idx, total=len(beats.beats),
                  item=f"素材選択: {beat.name}")
-            candidates = await retrieve_candidates(
-                search, memory, project_id, beat, story,
-                limit=config.director.candidates_per_beat, exclude=used_ids,
-                usage_counts=usage_counts,
-            )
+            candidates = [
+                c for c in beat_pool[beat_idx] if c.segment_id not in used_ids
+            ]
             guidance = ""
             if enforce_chronology:
-                candidates = filter_candidates_by_time(candidates, time_frontier)
-                # Oldest first: the flow consumes the shoot in real order,
-                # so early sections should take the earliest fitting shots
-                # and leave later footage for later sections.
-                candidates.sort(
-                    key=lambda c: (c.recorded_at is None, c.recorded_at or "")
+                in_window = filter_candidates_by_window(
+                    candidates, windows[beat_idx]
                 )
+                in_window = filter_candidates_by_time(in_window, time_frontier)
+                if in_window:
+                    candidates = in_window
+                else:
+                    log.warning(
+                        "beat '%s': nothing inside its time window; relaxing",
+                        beat.name,
+                    )
+                    candidates = filter_candidates_by_time(
+                        candidates, time_frontier
+                    )
                 guidance = (
-                    "The story follows real chronology. Prefer the EARLIEST "
-                    "candidates (see 'shot at') that serve this beat — later "
-                    "footage must stay available for later beats."
+                    "The story follows real chronology; these candidates come "
+                    "from this beat's own part of the shoot. Prefer the "
+                    "earliest that serve the beat's purpose."
                 )
+            candidates = candidates[:cpb]
             for c in candidates:
                 segments_by_id[c.segment_id] = c
             selection = await select_for_beat(

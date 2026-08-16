@@ -6,6 +6,8 @@ stuffed into the LLM context (§61/§78).
 
 from __future__ import annotations
 
+from typing import Any
+
 from ..ai.schemas import Message
 from ..ai.services import AIServices
 from ..logging import get_logger
@@ -21,6 +23,81 @@ log = get_logger("director.selector")
 # Retrieval over-fetch factor: extra semantic hits give the freshness
 # re-rank something to choose from.
 _OVERFETCH = 3
+
+
+def plan_time_windows(
+    candidate_lists: list[list[SegmentUnderstanding]],
+) -> list[tuple[str | None, str | None]]:
+    """Assign each beat a capture-time window so beats consume the shoot
+    in order — the chronology guarantee is structural, not advisory
+    (AGENT.md §2).
+
+    A small DP picks one dated "anchor" candidate per beat, minimizing
+    summed semantic rank subject to anchor times being non-decreasing
+    across beats; a beat whose footage cannot fit the order is skipped at
+    a high penalty (it then inherits its neighbors' bounds). Beat i's
+    window is [own anchor, next anchored beat's anchor]. Undated
+    candidates are never window-filtered.
+    """
+    skip_penalty = 10_000  # worse than any achievable rank sum
+    dated: list[list[tuple[str, int]]] = [
+        sorted(
+            (c.recorded_at, rank)
+            for rank, c in enumerate(cands)
+            if c.recorded_at is not None
+        )
+        for cands in candidate_lists
+    ]
+    # State: (last_anchor_time, cost, parent, this_beat_anchor)
+    states: list[tuple[str, int, Any, str | None]] = [("", 0, None, None)]
+    for options in dated:
+        new_states: list[tuple[str, int, Any, str | None]] = []
+        for prev in states:
+            new_states.append((prev[0], prev[1] + skip_penalty, prev, None))
+            for t, rank in options:
+                if t >= prev[0]:
+                    new_states.append((t, prev[1] + rank, prev, t))
+        # Pareto prune: among states sorted by time, keep strictly
+        # improving costs (a later time never helps unless it is cheaper).
+        new_states.sort(key=lambda s: (s[0], s[1]))
+        pruned: list[tuple[str, int, Any, str | None]] = []
+        best_cost = None
+        for s in new_states:
+            if best_cost is None or s[1] < best_cost:
+                pruned.append(s)
+                best_cost = s[1]
+        states = pruned
+    final = min(states, key=lambda s: s[1])
+    anchors: list[str | None] = []
+    node = final
+    while node is not None and node[2] is not None:
+        anchors.append(node[3])
+        node = node[2]
+    anchors.reverse()
+
+    windows: list[tuple[str | None, str | None]] = []
+    for i in range(len(anchors)):
+        lo = anchors[i]
+        if lo is None:  # skipped beat: bounded by the previous anchor
+            lo = next((anchors[j] for j in range(i - 1, -1, -1)
+                       if anchors[j] is not None), None)
+        hi = next((anchors[j] for j in range(i + 1, len(anchors))
+                   if anchors[j] is not None), None)
+        windows.append((lo, hi))
+    return windows
+
+
+def filter_candidates_by_window(
+    candidates: list[SegmentUnderstanding],
+    window: tuple[str | None, str | None],
+) -> list[SegmentUnderstanding]:
+    lo, hi = window
+    return [
+        c for c in candidates
+        if c.recorded_at is None
+        or ((lo is None or c.recorded_at >= lo)
+            and (hi is None or c.recorded_at <= hi))
+    ]
 
 
 def filter_candidates_by_time(

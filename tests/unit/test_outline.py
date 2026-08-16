@@ -169,3 +169,54 @@ def test_pin_story_beats():
     ])
     pinned = pin_story_beats(plan, {"a": "出発", "b": "電車移動"})
     assert [c.story_beat for c in pinned.clips] == ["出発", "電車移動", "invented"]
+
+
+def test_plan_time_windows_forces_monotonic_anchors():
+    from aidirector.director.selector import (
+        filter_candidates_by_window,
+        plan_time_windows,
+    )
+
+    # 出発: the semantically-best candidate (rank 0) is the EVENING
+    # departure back home — the trap that scrambled the real plan.
+    departure = [
+        make_segment("dep_evening", "2026-08-15T18:11:00"),
+        make_segment("dep_morning", "2026-08-15T11:23:00"),
+    ]
+    train = [make_segment("train_morning", "2026-08-15T13:06:00")]
+    arrival = [make_segment("arrive", "2026-08-15T18:03:00")]
+
+    windows = plan_time_windows([departure, train, arrival])
+    assert windows[0] == ("2026-08-15T11:23:00", "2026-08-15T13:06:00")
+    assert windows[1] == ("2026-08-15T13:06:00", "2026-08-15T18:03:00")
+    assert windows[2] == ("2026-08-15T18:03:00", None)
+    # The evening departure is now outside 出発's window.
+    kept = filter_candidates_by_window(departure, windows[0])
+    assert [c.segment_id for c in kept] == ["dep_morning"]
+
+
+def test_plan_time_windows_skips_impossible_beats():
+    from aidirector.director.selector import plan_time_windows
+
+    a = [make_segment("a", "2026-08-15T10:00:00")]
+    # Its only dated candidate is BEFORE beat a's; ranked worse than a's
+    # so the DP prefers keeping a anchored and skipping this beat.
+    undated = make_segment("u", None)
+    undated.recorded_at = None
+    impossible = [undated, make_segment("early_only", "2026-08-15T08:00:00")]
+    b = [make_segment("b", "2026-08-15T12:00:00")]
+    windows = plan_time_windows([a, impossible, b])
+    # The middle beat cannot fit after 10:00 — it inherits its
+    # neighbors' bounds instead of breaking the order.
+    assert windows[0][0] == "2026-08-15T10:00:00"
+    assert windows[1] == ("2026-08-15T10:00:00", "2026-08-15T12:00:00")
+    assert windows[2][0] == "2026-08-15T12:00:00"
+
+
+def test_plan_time_windows_undated_pool():
+    from aidirector.director.selector import plan_time_windows
+
+    undated = make_segment("u", "2026-08-15T10:00:00")
+    undated.recorded_at = None
+    windows = plan_time_windows([[undated], [undated]])
+    assert windows == [(None, None), (None, None)]
