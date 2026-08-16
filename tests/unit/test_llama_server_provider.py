@@ -136,3 +136,59 @@ def test_command_building():
     )
     command = LlamaServerDirectorProvider(local)._build_command()
     assert command[1] == "-m" and command[2] == "/models/qwen3.gguf"
+
+
+# A stand-in multimodal server: /health + /v1/chat/completions -> VisionAnalysis.
+FAKE_VISION_SERVER = r"""
+import json, sys
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+class H(BaseHTTPRequestHandler):
+    def log_message(self, *a): pass
+    def do_GET(self):
+        self.send_response(200 if self.path == "/health" else 404); self.end_headers()
+    def do_POST(self):
+        self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        body = json.dumps({"choices": [{"message": {"content": json.dumps({
+            "description": "a train arrives at the station",
+            "mood": ["calm"], "camera_motion": "static",
+        })}}]}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+"""
+
+
+async def test_llama_server_vision_provider(tmp_path):
+    from aidirector.ai.providers.vision import LlamaServerVisionProvider
+    from aidirector.ai.schemas import ImageInput, VisionContext
+
+    port = free_port()
+    cfg = ModelEndpointConfig(
+        provider="llama-server", model="Qwen3.8-27B-GGUF:UD-IQ3_XXS",
+        extra={"binary": sys.executable,
+               "args": ["-c", FAKE_VISION_SERVER, str(port)],
+               "port": port, "startup_timeout": 30},
+    )
+    provider = LlamaServerVisionProvider(cfg)
+    assert not provider.gpu_resident, "server process owns the VRAM"
+
+    frame = tmp_path / "frame.jpg"
+    frame.write_bytes(bytes.fromhex("ffd8ffdb") + b"\x00" * 16)
+
+    await provider.load()
+    process = provider._server._process
+    assert process is not None and process.poll() is None
+
+    analysis = await provider.analyze_segment(
+        [ImageInput(path=frame)], VisionContext(asset_name="clip.mp4")
+    )
+    assert analysis.description == "a train arrives at the station"
+    assert analysis.mood == ["calm"]
+
+    await provider.unload()
+    assert process.poll() is not None, "owned server stopped on unload"

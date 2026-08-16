@@ -44,6 +44,10 @@ def _make_vision_provider(cfg: ModelEndpointConfig) -> Any:
         from .providers.vision import TransformersVisionProvider
 
         return TransformersVisionProvider(cfg)
+    if cfg.provider == "llama-server":
+        from .providers.vision import LlamaServerVisionProvider
+
+        return LlamaServerVisionProvider(cfg)
     raise ProviderError(f"unknown vision provider: {cfg.provider}")
 
 

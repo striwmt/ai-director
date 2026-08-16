@@ -33,10 +33,11 @@ models:
   #         model: qwen3-8b-q4
   #         context_length: 16384
   #
-  # Bigger director on a 16GB GPU (needs llama.cpp and ~24GB free RAM):
-  # a MoE model with a small active size keeps its experts in system RAM
-  # (--n-cpu-moe) and only attention/KV on the GPU — put this in
-  # config/local.yaml (gitignored, merged over this file):
+  # Bigger models via config/local.yaml (gitignored, merged over this
+  # file). Two proven recipes for a 16GB GPU:
+  #
+  # (1) MoE director (needs ~24GB free RAM): experts in system RAM,
+  #     attention/KV on the GPU:
   #       models:
   #         director:
   #           provider: llama-server
@@ -45,6 +46,20 @@ models:
   #           extra: { binary: llama-server, port: 8102,
   #                    startup_timeout: 1800,
   #                    extra_args: ["--n-cpu-moe", "99"] }
+  #
+  # (2) One multimodal model for BOTH vision and director (same port —
+  #     whichever phase runs starts the server; it is stopped between
+  #     phases so other models get the GPU). Fresh footage analysis is
+  #     slower than with the 4B VLM:
+  #       models:
+  #         vision: &big_vlm
+  #           provider: llama-server
+  #           model: unsloth/Qwen3.8-27B-GGUF:UD-IQ3_XXS   # ~12GB, fits 16GB
+  #           context_length: 12288
+  #           extra: { binary: llama-server, port: 8102,
+  #                    startup_timeout: 1800,
+  #                    extra_args: ["--mmproj", "/path/to/mmproj-Qwen3.8-27B-Q8_0.gguf"] }
+  #         director: *big_vlm
   director:
     provider: transformers
     model: Qwen/Qwen3-8B

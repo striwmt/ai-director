@@ -53,7 +53,7 @@ Footage → Media Ingest → Color Management → Perception → Media Memory
 
 | 役割 | モデル | Provider |
 |---|---|---|
-| 映像理解 | Qwen3-VL-4B-Instruct | `transformers`(bf16) |
+| 映像理解 | Qwen3-VL-4B-Instruct | `transformers`(bf16)、`llama-server`(マルチモーダルGGUF+mmproj)or `openai-compatible` |
 | Director | Qwen3-8B(NF4 4bit・インプロセス) | `transformers`(既定)、`llama-server`(自動管理・高速)or `openai-compatible` |
 | Embedding | Qwen3-VL-Embedding-2B | `sentence-transformers` |
 | 音声認識 | faster-whisper large-v3-turbo | `faster-whisper` |

@@ -54,7 +54,7 @@ Reference model set (verified on RTX 5060 Ti 16GB):
 
 | Role | Model | Provider |
 |---|---|---|
-| Vision | Qwen3-VL-4B-Instruct | `transformers` (bf16) |
+| Vision | Qwen3-VL-4B-Instruct | `transformers` (bf16), `llama-server` (multimodal GGUF + mmproj) or `openai-compatible` |
 | Director | Qwen3-8B (NF4 4-bit, in-process) | `transformers` (default), `llama-server` (managed, faster) or `openai-compatible` |
 | Embedding | Qwen3-VL-Embedding-2B | `sentence-transformers` |
 | Speech | faster-whisper large-v3-turbo | `faster-whisper` |

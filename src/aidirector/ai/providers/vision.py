@@ -97,6 +97,34 @@ class OpenAICompatibleVisionProvider:
             raise StructuredOutputError(f"invalid VisionAnalysis: {exc}") from exc
 
 
+class LlamaServerVisionProvider(OpenAICompatibleVisionProvider):
+    """Multimodal llama.cpp server managed like the director's (start on
+    load, stop on unload, reuse a healthy server on the port).
+
+    Lets one big vision-language GGUF (e.g. Qwen3.8-27B + its mmproj)
+    serve both the vision and director workloads on the same port. The
+    mmproj file goes in extra.extra_args: ["--mmproj", "/path/to.gguf"].
+    """
+
+    def __init__(self, cfg: ModelEndpointConfig) -> None:
+        from .llama_server import ManagedLlamaServer
+
+        self._server = ManagedLlamaServer(cfg)
+        super().__init__(cfg.model_copy(
+            update={"provider": "openai-compatible",
+                    "base_url": self._server.base_url}
+        ))
+        self.name = f"llama-server:{cfg.model}"
+
+    async def load(self) -> None:
+        await self._server.ensure_running()
+        await super().load()
+
+    async def unload(self) -> None:
+        await super().unload()
+        self._server.stop()
+
+
 class TransformersVisionProvider:
     """Local VLM via HuggingFace transformers (Qwen3-VL class models).
 
