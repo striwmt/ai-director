@@ -27,19 +27,28 @@ _OVERFETCH = 3
 
 def plan_time_windows(
     candidate_lists: list[list[SegmentUnderstanding]],
+    all_times: list[str] | None = None,
 ) -> list[tuple[str | None, str | None]]:
     """Assign each beat a capture-time window so beats consume the shoot
     in order — the chronology guarantee is structural, not advisory
     (AGENT.md §2).
 
     A small DP picks one dated "anchor" candidate per beat, minimizing
-    summed semantic rank subject to anchor times being non-decreasing
-    across beats; a beat whose footage cannot fit the order is skipped at
-    a high penalty (it then inherits its neighbors' bounds). Beat i's
+    summed cost subject to anchor times being non-decreasing across
+    beats; a beat whose footage cannot fit the order is skipped at a
+    high penalty (it then inherits its neighbors' bounds). Beat i's
     window is [own anchor, next anchored beat's anchor]. Undated
     candidates are never window-filtered.
+
+    Cost = semantic rank + a spread term: beat i's anchor should sit
+    near fraction i/(N-1) of the shoot (``all_times``: every dated
+    segment's capture time). Retrieval pools can be near-identical
+    across beats (shared story text dominates the query embedding);
+    without the spread term the "optimal" plan packs a whole day into a
+    few minutes of footage.
     """
     skip_penalty = 10_000  # worse than any achievable rank sum
+    spread_weight = 100.0  # ±1/`weight` of the shoot per rank point
     dated: list[list[tuple[str, int]]] = [
         sorted(
             (c.recorded_at, rank)
@@ -48,15 +57,39 @@ def plan_time_windows(
         )
         for cands in candidate_lists
     ]
+    timeline = sorted(all_times) if all_times else []
+
+    # Pools can lack whole parts of the shoot entirely; a rank-neutral
+    # quantile anchor per beat guarantees the windows can always span
+    # the footage even when every pool clusters in one hour.
+    if len(timeline) >= 2 and len(dated) >= 2:
+        for i, options in enumerate(dated):
+            quantile = timeline[
+                round(i * (len(timeline) - 1) / (len(dated) - 1))
+            ]
+            options.append((quantile, len(candidate_lists[i])))
+            options.sort()
+
+    def spread_cost(beat_index: int, t: str) -> float:
+        if len(timeline) < 2 or len(dated) < 2:
+            return 0.0
+        from bisect import bisect_left
+
+        position = bisect_left(timeline, t) / (len(timeline) - 1)
+        target = beat_index / (len(dated) - 1)
+        return spread_weight * abs(position - target)
+
     # State: (last_anchor_time, cost, parent, this_beat_anchor)
-    states: list[tuple[str, int, Any, str | None]] = [("", 0, None, None)]
-    for options in dated:
-        new_states: list[tuple[str, int, Any, str | None]] = []
+    states: list[tuple[str, float, Any, str | None]] = [("", 0.0, None, None)]
+    for beat_index, options in enumerate(dated):
+        new_states: list[tuple[str, float, Any, str | None]] = []
         for prev in states:
             new_states.append((prev[0], prev[1] + skip_penalty, prev, None))
             for t, rank in options:
                 if t >= prev[0]:
-                    new_states.append((t, prev[1] + rank, prev, t))
+                    new_states.append(
+                        (t, prev[1] + rank + spread_cost(beat_index, t), prev, t)
+                    )
         # Pareto prune: among states sorted by time, keep strictly
         # improving costs (a later time never helps unless it is cheaper).
         new_states.sort(key=lambda s: (s[0], s[1]))

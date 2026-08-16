@@ -221,3 +221,23 @@ def test_plan_time_windows_undated_pool():
     undated.recorded_at = None
     windows = plan_time_windows([[undated], [undated]])
     assert windows == [(None, None), (None, None)]
+
+
+def test_plan_time_windows_spreads_over_degenerate_pools():
+    from aidirector.director.selector import plan_time_windows
+
+    # Retrieval failure mode: every beat's pool holds only evening clips
+    # (shared story text dominates the query embedding). Quantile anchors
+    # must keep the windows spanning the whole shoot regardless.
+    evening = [
+        make_segment("e0", "2026-08-15T18:01:00"),
+        make_segment("e1", "2026-08-15T18:02:00"),
+        make_segment("e2", "2026-08-15T18:03:00"),
+    ]
+    pools = [list(evening), list(evening), list(evening)]
+    all_times = [f"2026-08-15T{h:02d}:00:00" for h in range(9, 21)]
+    windows = plan_time_windows(pools, all_times)
+    assert windows[0][0] == "2026-08-15T09:00:00", "first beat starts the shoot"
+    assert windows[-1][0] >= "2026-08-15T18:00:00", "last beat ends the shoot"
+    los = [w[0] for w in windows]
+    assert los == sorted(los)

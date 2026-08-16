@@ -334,10 +334,23 @@ async def run_director(
                 limit=cpb * 2, exclude=set(), usage_counts=usage_counts,
             )
             beat_pool.append(pool)
-        windows = (
-            plan_time_windows(beat_pool) if enforce_chronology
-            else [(None, None)] * len(beat_pool)
-        )
+        if enforce_chronology:
+            from ..media.metadata import refined_creation_time
+            from ..perception.interpretation import segment_recorded_at
+
+            starts = {
+                a.id: refined_creation_time(a.metadata) or a.metadata.creation_time
+                for a in memory.list_assets(project_id, kind="video")
+            }
+            all_times = [
+                t for segment in memory.list_project_segments(project_id)
+                if (t := segment_recorded_at(
+                    starts.get(segment.asset_id), segment.start
+                )) is not None
+            ]
+            windows = plan_time_windows(beat_pool, all_times)
+        else:
+            windows = [(None, None)] * len(beat_pool)
         if enforce_chronology:
             log.info("beat time windows: %s", [
                 (b.name, (w[0] or "")[11:16], (w[1] or "")[11:16])
